@@ -124,7 +124,7 @@ namespace BTH.Core.Run
             var result = _executor.Execute(request, State);
             if (result.Success)
             {
-                TryEnterBossPhase();
+                TryEnterDuel();
             }
 
             return result;
@@ -145,6 +145,11 @@ namespace BTH.Core.Run
             if (State.IsOver)
             {
                 return ActionResult.Fail(ActionError.StageEnded, "Màn đã kết thúc");
+            }
+
+            if (State.Turn.Phase == TurnPhase.Duel)
+            {
+                return ActionResult.Fail(ActionError.WrongPhase, "Đang trong Duel");
             }
 
             if (State.Turn.Phase != TurnPhase.Player)
@@ -174,7 +179,7 @@ namespace BTH.Core.Run
         /// <summary>Mở phase người chơi (dùng khi driver tự chạy AI bên ngoài EndTurn).</summary>
         public void BeginPlayerPhase()
         {
-            if (State != null && !State.IsOver)
+            if (State != null && !State.IsOver && State.Turn.Phase != TurnPhase.Duel)
             {
                 State.Turn.BeginPlayerPhase();
             }
@@ -195,6 +200,7 @@ namespace BTH.Core.Run
             state.Damage = new DamageCalculator(_elements);
             state.Telegraph = new TelegraphService(events);
             state.Clash = _clash ?? new ClashResolver();
+            state.Duel = new ClashDuel(state);
             state.BossPhase = new BossPhaseController(_rules);
             state.Knowledge = new RunKnowledge(events);
             state.Turn = new TurnManager(state, _initiative, _objective);
@@ -309,17 +315,48 @@ namespace BTH.Core.Run
             queue.Run(context);
         }
 
-        private void TryEnterBossPhase()
+        /// <summary>
+        /// Vào Duel phase 2 ngay (bỏ bàn cờ): clear telegraph, khoá sân qua BossPhase,
+        /// bắt đầu phiên đấu chiêu, chuyển TurnPhase sang Duel.
+        /// </summary>
+        public void EnterDuel()
         {
-            var boss = State.Units.Boss;
-            if (boss == null || !boss.IsAlive || State.BossPhase == null)
+            if (State == null || State.IsOver || State.Turn.Phase == TurnPhase.Duel)
             {
                 return;
             }
 
-            if (State.BossPhase.ShouldEnterPhase2(boss.Hp, boss.MaxHp))
+            var stage = State.Stage;
+            var player = State.Units.Player;
+            var boss = State.Units.Boss;
+            if (stage?.Duel == null || player == null || boss == null || !player.IsAlive || !boss.IsAlive)
             {
-                State.BossPhase.EnterPhase2(State);
+                return;
+            }
+
+            State.Telegraph?.Clear();
+            State.BossPhase?.EnterPhase2(State);
+            State.Duel.Start(State, stage.Duel, player, boss);
+            State.Turn.BeginDuel();
+        }
+
+        private void TryEnterDuel()
+        {
+            if (State == null || State.IsOver || State.Turn.Phase == TurnPhase.Duel)
+            {
+                return;
+            }
+
+            var stage = State.Stage;
+            var boss = State.Units.Boss;
+            if (stage?.Duel == null || boss == null || !boss.IsAlive || boss.MaxHp <= 0)
+            {
+                return;
+            }
+
+            if (boss.HpRatio < State.Rules.Phase2Threshold)
+            {
+                EnterDuel();
             }
         }
     }

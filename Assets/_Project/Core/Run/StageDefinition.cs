@@ -30,5 +30,8 @@ namespace BTH.Core.Run
 
         /// <summary>Dữ liệu Clash của màn; null nếu màn không có Clash.</summary>
         public Combat.ClashDefinition Clash { get; set; }
+
+        /// <summary>Dữ liệu Duel phase 2; null nếu màn không có Duel.</summary>
+        public Combat.DuelDefinition Duel { get; set; }
     }
 }

@@ -53,6 +53,11 @@ namespace BTH.Core.Actions
                 return ValidationResult.Fail(ActionError.UnitDead, "Unit đã chết");
             }
 
+            if (state.Turn.Phase == TurnPhase.Duel)
+            {
+                return ValidateDuel(actor, request, state);
+            }
+
             if (request.Kind == ActionKind.EndTurn)
             {
                 if (state.Turn.Phase != TurnPhase.Player)
@@ -103,6 +108,24 @@ namespace BTH.Core.Actions
 
             if (!state.Units.TryGet(request.Actor, out var actor) || !actor.IsAlive)
             {
+                return result;
+            }
+
+            if (state.Turn.Phase == TurnPhase.Duel)
+            {
+                if (request.Kind == ActionKind.Attack && state.Duel?.State?.AwaitingFinisher == true)
+                {
+                    var duelBoss = state.Units.Boss;
+                    if (duelBoss != null)
+                    {
+                        result.Add(duelBoss.Position);
+                    }
+                }
+                else if (request.Kind == ActionKind.ClashSkill)
+                {
+                    result.Add(actor.Position);
+                }
+
                 return result;
             }
 
@@ -373,6 +396,81 @@ namespace BTH.Core.Actions
             }
 
             return result;
+        }
+
+        private static ValidationResult ValidateDuel(UnitState actor, ActionRequest request, GameState state)
+        {
+            var duel = state.Duel;
+            if (duel == null || !duel.IsActive || duel.State == null || duel.Definition == null)
+            {
+                return ValidationResult.Fail(ActionError.ClashNotAvailable, "Chưa vào Duel");
+            }
+
+            if (duel.State.IsOver)
+            {
+                return ValidationResult.Fail(ActionError.StageEnded, "Duel đã kết thúc");
+            }
+
+            if (request.Kind == ActionKind.ClashSkill)
+            {
+                if (duel.State.AwaitingFinisher)
+                {
+                    return ValidationResult.Fail(ActionError.WrongPhase, "Phải đánh kết liễu trước");
+                }
+
+                if (state.Skills == null || !state.Skills.TryGet(request.SkillId, out var skill) ||
+                    skill == null || !skill.IsClashSkill ||
+                    !ContainsSkillId(duel.Definition.PlayerSkillIds, skill.Id) ||
+                    !HasSkill(actor, skill.Id))
+                {
+                    return ValidationResult.Fail(ActionError.SkillNotReady, "Chiêu không dùng được trong Duel");
+                }
+
+                return ValidationResult.Ok();
+            }
+
+            if (request.Kind == ActionKind.Attack)
+            {
+                if (!duel.State.AwaitingFinisher)
+                {
+                    return ValidationResult.Fail(ActionError.WrongPhase, "Boss chưa choáng");
+                }
+
+                var boss = state.Units.Boss;
+                if (boss == null || !boss.IsAlive)
+                {
+                    return ValidationResult.Fail(ActionError.TargetEmpty, "Boss đã chết");
+                }
+
+                var target = state.Units.At(request.TargetCell);
+                if (target == null || target.Id != boss.Id)
+                {
+                    return ValidationResult.Fail(ActionError.InvalidTarget, "Chỉ đánh boss");
+                }
+
+                return ValidationResult.Ok();
+            }
+
+            return ValidationResult.Fail(ActionError.WrongPhase,
+                "Trong Duel chỉ chọn chiêu Clash hoặc đòn kết liễu");
+        }
+
+        private static bool ContainsSkillId(IReadOnlyList<string> ids, string skillId)
+        {
+            if (ids == null || string.IsNullOrEmpty(skillId))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < ids.Count; i++)
+            {
+                if (string.Equals(ids[i], skillId, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool HasSkill(UnitState actor, string skillId)

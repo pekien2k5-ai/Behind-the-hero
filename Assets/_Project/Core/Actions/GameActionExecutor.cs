@@ -71,6 +71,11 @@ namespace BTH.Core.Actions
 
         private ActionResult ExecuteAttack(UnitState actor, ActionRequest request, GameState state)
         {
+            if (state.Turn.Phase == TurnPhase.Duel)
+            {
+                return ExecuteDuelFinisher(actor, state);
+            }
+
             var target = state.Units.At(request.TargetCell);
             if (target == null)
             {
@@ -132,6 +137,11 @@ namespace BTH.Core.Actions
 
         private ActionResult ExecuteClash(UnitState actor, ActionRequest request, GameState state)
         {
+            if (state.Turn.Phase == TurnPhase.Duel)
+            {
+                return ExecuteDuelClash(actor, request, state);
+            }
+
             if (state.Clash == null || state.Stage == null || state.Stage.Clash == null)
             {
                 return ActionResult.Fail(ActionError.ClashNotAvailable, "Màn không có Clash");
@@ -157,6 +167,29 @@ namespace BTH.Core.Actions
             return FinishIfOver(state);
         }
 
+        private ActionResult ExecuteDuelClash(UnitState actor, ActionRequest request, GameState state)
+        {
+            var boss = state.Units.Boss;
+            state.Duel.Choose(request.SkillId);
+            var targetCell = boss != null ? boss.Position : actor.Position;
+            state.Events.Publish(new SkillUsedEvent(actor.Id, request.SkillId, targetCell));
+            state.Events.Publish(new UnitActedEvent(actor.Id, ActionKind.ClashSkill, targetCell));
+            return FinishIfOver(state);
+        }
+
+        private ActionResult ExecuteDuelFinisher(UnitState actor, GameState state)
+        {
+            if (!state.Duel.TryFinisher(out _))
+            {
+                return ActionResult.Fail(ActionError.WrongPhase, "Chưa có đòn kết liễu");
+            }
+
+            var boss = state.Units.Boss;
+            var targetCell = boss != null ? boss.Position : actor.Position;
+            state.Events.Publish(new UnitActedEvent(actor.Id, ActionKind.Attack, targetCell));
+            return FinishIfOver(state);
+        }
+
         private static void ApplyClashEffect(ClashOutcome outcome, UnitState player, UnitState boss,
             GameState state)
         {
@@ -175,17 +208,7 @@ namespace BTH.Core.Actions
                 new StatusContext(target, state.Events, state.Units));
         }
 
-        private StageResult CheckObjective(GameState state)
-        {
-            return _objective.Evaluate(state, state.Stage);
-        }
-
         /// <summary>Kết thúc màn ngay nếu đánh giết boss/chết giữa lượt, không đợi EndTurn.</summary>
-        private ActionResult Finish(StageResult result)
-        {
-            return ActionResult.Ok();
-        }
-
         private ActionResult FinishIfOver(GameState state)
         {
             var result = _objective.Evaluate(state, state.Stage);

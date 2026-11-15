@@ -54,6 +54,7 @@ namespace BTH.Core.Tests
             state.Damage = new DamageCalculator();
             state.Telegraph = new TelegraphService(events);
             state.Clash = new ClashResolver();
+            state.Duel = new ClashDuel(state);
             state.BossPhase = new BossPhaseController(state.Rules);
             state.Knowledge = new RunKnowledge(events);
             state.Turn = new TurnManager(state);

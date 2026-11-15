@@ -13,6 +13,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <IsPackable>false</IsPackable>
+    <!-- Đúng tên assembly để AssemblyInfo.cs (InternalsVisibleTo) cho test gọi setter nội bộ. -->
+    <AssemblyName>BTH.Core.Tests</AssemblyName>
     <RootNamespace>BTH.Core.Tests</RootNamespace>
     <NoWarn>CS1591</NoWarn>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>

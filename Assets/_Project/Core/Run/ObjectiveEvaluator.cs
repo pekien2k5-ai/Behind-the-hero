@@ -30,7 +30,9 @@ namespace BTH.Core.Run
                 return StageResult.Victory;
             }
 
-            if (stage != null && state.Turn != null && state.Turn.TurnIndex > state.Turn.TurnLimit)
+            if (stage != null && state.Turn != null &&
+                state.Turn.Phase != BTH.Core.Turn.TurnPhase.Duel &&
+                state.Turn.TurnIndex > state.Turn.TurnLimit)
             {
                 return StageResult.DefeatTurnLimit;
             }

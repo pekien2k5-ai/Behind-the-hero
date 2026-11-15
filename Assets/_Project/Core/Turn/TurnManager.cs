@@ -137,7 +137,7 @@ namespace BTH.Core.Turn
 
         public void EndTurn()
         {
-            if (_state.IsOver)
+            if (_state.IsOver || Phase == TurnPhase.Duel)
             {
                 return;
             }
@@ -179,6 +179,17 @@ namespace BTH.Core.Turn
                 // người chơi còn cơ hội chọn lại chiêu ứng biến.
                 _state.Snapshots.PushCheckpoint(SnapshotTrigger.ClashStart);
             }
+        }
+
+        /// <summary>Phase 2: chuyển sang Duel — từ đây không còn AP/lượt/bàn cờ.</summary>
+        public void BeginDuel()
+        {
+            if (_state.IsOver)
+            {
+                return;
+            }
+
+            SetPhase(TurnPhase.Duel);
         }
 
         public void FinishStage(StageResult result)

@@ -398,6 +398,24 @@ class HolyPillarBehaviour : ISkillBehaviour {
 - `ClashResolver.Predict(...)` → `ClashPrediction(Result, PlayerPower, BossPower, Bonus)`; `Resolve(...)` → `ClashOutcome` + gắn status; `GetOptions(...)` → danh sách `ClashOption` cho UI.
 - Công thức: `EffectivePower = skill.Power + bonus`; `>` Win, `==` Draw, `<` Lose. Không RNG.
 
+### Duel — `Combat/Duel*.cs`, `Combat/ClashDuel.cs` ⭐
+Phase 2 đấu chiêu 1v1, **không còn bàn cờ/AP/End Turn**.
+
+- `DuelDefinition`: `Id, BackgroundId, MusicId, TransitionId, BossSkillIds, PlayerSkillIds, RoundLimit, DrawChipRatio (0.10), FinisherCount, Rules, WinEffect, LoseEffect`.
+- `DuelState`: `Round, BossSkillIndex, BossSkillId, BossPower, BossElement, AwaitingFinisher, FinishersRemaining, LastResult, IsOver, Winner, SeenBossSkills`.
+- `ClashMath.EffectivePower(skill, bonus)`; `Compare(playerPower, bossPower)`.
+- `IClashDuel` / `ClashDuel`:
+  - `Start(state, definition, player, boss)` — clear status 2 bên, publish `ClashStartedEvent`, vào vòng 1.
+  - `GetOptions()` → 3 `ClashOption` kèm `ClashPrediction`.
+  - `Choose(skillId)` → `ClashRoundResult`:
+    - Win: gắn `WinEffect` lên boss + `AwaitingFinisher = true` (1 đòn kết liễu).
+    - Draw: mỗi bên mất `round(power × 0.10)`.
+    - Lose: player ăn đúng `BossPower` + `LoseEffect`.
+  - `TryFinisher(out DamageResult)` — đánh thường của player lên boss (Stagger ×2), hết finisher thì sang vòng mới.
+- Kích hoạt: `GameSession` tự gọi `TryEnterDuel` sau mỗi lệnh thành công khi `boss.HpRatio < rules.Phase2Threshold`; `EnterDuel()` public để test/UI ép thủ công.
+- `TurnPhase.Duel`: `EndTurn` trả `ActionError.WrongPhase`; validator chỉ nhận `ClashSkill` (khi chưa `AwaitingFinisher`) và `Attack` (khi `AwaitingFinisher`).
+- `DuelSnapshot` nằm trong `GameSnapshot.Duel` nên rewind giữa Duel hoạt động; `DuelRoundStartedEvent(round, bossSkillId, bossPower)`, `DuelEndedEvent(lastResult, winner)`.
+
 ---
 
 ## 8. Ai — trí tuệ địch

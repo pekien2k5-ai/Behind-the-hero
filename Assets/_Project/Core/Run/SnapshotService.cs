@@ -45,7 +45,7 @@ namespace BTH.Core.Run
             var intents = CaptureIntents();
 
             return new GameSnapshot(_turn.TurnIndex, _turn.Phase, _state.Result, _state.Random.State,
-                cells, locked, units, intents);
+                cells, locked, units, intents, _state.Duel != null ? _state.Duel.Capture() : null);
         }
 
         public void Restore(GameSnapshot snapshot)
@@ -100,6 +100,21 @@ namespace BTH.Core.Run
                 if (_telegraph is TelegraphService concreteTelegraph)
                 {
                     concreteTelegraph.RestoreSilently(snapshot.Intents);
+                }
+            }
+
+            if (snapshot.Duel != null)
+            {
+                if (_state.Duel != null)
+                {
+                    _state.Duel.Restore(snapshot.Duel);
+                }
+            }
+            else
+            {
+                if (_state.Duel != null)
+                {
+                    _state.Duel.Clear();
                 }
             }
 

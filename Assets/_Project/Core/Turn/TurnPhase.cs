@@ -13,6 +13,9 @@ namespace BTH.Core.Turn
         Enemy = 4,
         TurnEnd = 5,
         Clash = 6,
-        StageEnded = 7
+        StageEnded = 7,
+
+        /// <summary>Phase 2: đấu chiêu 1v1, không bàn cờ/AP/EndTurn (Docs/QUYET_DINH.md).</summary>
+        Duel = 8
     }
 }

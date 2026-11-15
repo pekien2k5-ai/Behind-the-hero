@@ -24,6 +24,9 @@ namespace BTH.Core.Actions
         ClashNotAvailable = 18,
         ObjectiveAlreadyEnded = 19,
         AlreadyMoved = 20,
-        AlreadyActed = 21
+        AlreadyActed = 21,
+
+        /// <summary>Đang ở pha khác (ví dụ trong Duel mà gửi lệnh di chuyển).</summary>
+        WrongPhase = 22
     }
 }

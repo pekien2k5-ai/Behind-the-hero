@@ -8,10 +8,10 @@ Người chơi điều khiển **Wanderer** qua 5 ải, mỗi ải đối đầu
 
 | Phần | Trạng thái |
 |---|---|
-| **Core** — luật chơi (C# thuần, không dùng UnityEngine) | ✅ 154 file, 6.608 dòng, **47 unit test xanh** |
+| **Core** — luật chơi (C# thuần, không dùng UnityEngine) | ✅ 163 file, **56 unit test xanh** (gồm Duel mode) |
 | Content — chiêu, quái, màn chơi, dữ liệu | ⏳ chưa làm |
 | Unity — hiển thị, input, animation, âm thanh | ⏳ chưa làm |
-| UI — HUD, menu, Clash UI | ⏳ chưa làm |
+| UI — HUD, menu, Clash/Duel UI | ⏳ chưa làm |
 
 ## Cấu trúc
 
@@ -26,7 +26,7 @@ Assets/
       Combat/      #   damage, effect, status, element, skill, clash
       Ai/          #   enemy intent, telegraph, boss phase
       Run/         #   rules, stage, snapshot, event bus, session, dialogue
-  Tests/           # BTH.Core.Tests — 47 test NUnit cho Core
+  Tests/           # BTH.Core.Tests — 56 test NUnit cho Core + Duel
 Tools/
   CoreTests/       # project dotnet để chạy test nhanh ngoài Unity
 Docs/

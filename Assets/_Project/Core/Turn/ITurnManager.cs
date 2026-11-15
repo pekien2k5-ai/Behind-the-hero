@@ -38,6 +38,9 @@ namespace BTH.Core.Turn
 
         void BeginClash();
 
+        /// <summary>Phase 2: chuyển sang Duel (không còn bàn cờ/AP).</summary>
+        void BeginDuel();
+
         void FinishStage(StageResult result);
 
         bool CanSpend(UnitId unit, int cost);

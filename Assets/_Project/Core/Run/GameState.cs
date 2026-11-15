@@ -44,6 +44,9 @@ namespace BTH.Core.Run
 
         public IClashResolver Clash { get; internal set; }
 
+        /// <summary>Phiên Duel phase 2; State == null khi chưa vào Duel.</summary>
+        public IClashDuel Duel { get; internal set; }
+
         public IBossPhaseController BossPhase { get; internal set; }
 
         public ISnapshotService Snapshots { get; internal set; }
