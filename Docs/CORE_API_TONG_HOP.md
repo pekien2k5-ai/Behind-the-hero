@@ -1,724 +1,1244 @@
-# TÓM TẮT CORE — Behind the Hero
+# BEHIND THE HERO — Tổng hợp API Core (v2.0)
 
-> Tài liệu cho đồng đội: mỗi class làm gì, hàm nào dùng nhiều, khi nào gọi.
-> Cập nhật: 2026-11-15 · **154 file C# · 0 dòng UnityEngine · 47/47 test xanh** (dotnet + Unity EditMode).
-> Đường dẫn gốc: `Behind the hero/Assets/_Project/Core/` — mỗi mục dưới đây ghi đường dẫn tương đối từ đó.
-
----
-
-## 0. Ba điều phải nhớ trước khi đọc
-
-1. **Core không dùng Unity.** Không `MonoBehaviour`, không `GameObject`, không `Random`, không `Time`. Core là luật chơi + state; Unity chỉ vẽ và nhận input.
-2. **Không sửa state trực tiếp.** Mọi thay đổi đi qua `GameSession.TryExecute(ActionRequest)` (hoặc `EndTurn()`); Core kiểm tra luật rồi mới đổi. UI đọc state để vẽ, không tự trừ máu.
-3. **UI nghe event, không tự tính.** Mỗi thay đổi phát một event struct; view subscribe để cập nhật. Không ai được nghe event rồi quyết định luật.
-
-```
-Content (ScriptableObject)  →  Core (luật, state, event)  →  Unity (view/input)  →  UI
-        cấu hình                   154 file, 47 test             trình bày          hiển thị
-```
-
-| Lớp | Được dùng gì | Không được dùng |
-|---|---|---|
-| `BTH.Core` | C# thuần | UnityEngine |
-| `BTH.Content` | Core + Unity (SO) | sửa state trực tiếp |
-| `BTH.Unity` | Core + Content + InputSystem | tính luật |
-| `BTH.UI` | Core + Unity + TMP | tính luật |
+> Tài liệu tra cứu cho cả nhóm: **lớp `BTH.Core` đang có gì, dùng thế nào, sai chỗ nào thì sửa ở đâu.**
+> Đối tượng: người viết Content (skill/quái/màn), người viết Unity/UI, người review.
+>
+> **Trạng thái 2026-11-15:** Core hoàn tất — **163 file · 7.366 dòng · 56 unit test xanh** (dotnet + Unity EditMode),
+> gồm **Duel mode** cho Phase 2. Content/Unity/UI chưa có code.
+> Kiến trúc & lý do thiết kế: `KIEN_TRUC_UNITY_BEHIND_THE_HERO.md`. Luật Duel đã chốt: `QUYET_DINH.md`.
 
 ---
 
-## 1. Bảng tra nhanh: muốn làm X → đọc Y
+## 0. Ba điều phải nhớ
 
-| Việc cần làm | Class / file chính |
-|---|---|
-| Toạ độ, khoảng cách, ô kề | `Grid/GridCoord`, `Grid/GridShapes` ⭐ |
-| Ô đi được không, LOS, địa hình | `Grid/IGridMap`, `Grid/GridMap` ⭐ |
-| Tìm đường / vùng đi được | `Units/AStarPathfinder`, `Units/ReachableSet` ⭐ |
-| Máu, AP, trạng thái của 1 quân | `Units/UnitState` ⭐ |
-| Thêm/bớt/di chuyển quân, tra quân ở ô | `Units/IUnitRegistry`, `Units/UnitRegistry` ⭐ |
-| Tính sát thương | `Combat/CombatMath`, `Combat/DamageCalculator` ⭐ |
-| Gắn/bỏ status (choáng, độc, guard…) | `Combat/StatusSet`, `Combat/*Status` ⭐ |
-| Tạo hiệu ứng chiêu (damage, đẩy, đổi địa hình) | `Combat/IGameEffect`, `Combat/*Effect` ⭐ |
-| Định nghĩa chiêu mới | `Combat/SkillDefinition`, `Combat/ISkillBehaviour` ⭐ |
-| Kiểm tra 1 lệnh có hợp lệ | `Actions/ActionValidator` ⭐ |
-| Thi hành 1 lệnh | `Actions/GameActionExecutor` ⭐ |
-| Lượt, AP, thứ tự đi | `Turn/ITurnManager`, `Turn/TurnManager` ⭐ |
-| Thắng/thua | `Run/ObjectiveEvaluator` ⭐ |
-| Chạy cả ván (không Unity) | `Run/GameSession` ⭐ |
-| Tua lại / checkpoint | `Run/SnapshotService`, `Run/SnapshotStore` ⭐ |
-| Số cân bằng (AP, guard, poison…) | `Run/IGameRules`, `Run/GameRules` ⭐ |
-| Đối thoại, ending | `Run/DialogueGraph`, `Run/DialogueRunner` |
-| UI cập nhật khi có gì xảy ra | `Run/EventBus` + 26 event ⭐ |
+1. **Luật nằm trong Core, không nằm trong UI.**
+   UI chỉ đọc event / gọi `Validate` + `TryExecute`; không tự trừ HP, không tự tính damage, không tự quyết thắng thua.
+2. **Mọi thay đổi state đi qua `ActionRequest`.**
+   `ActionValidator.Validate` (thuần, chỉ đọc) → `GameActionExecutor.Execute` (sửa state) → event.
+   Trong Duel cũng vậy: `ActionRequest.ClashSkill` và `ActionRequest.Attack` (finisher).
+3. **Thêm nội dung không sửa Core.**
+   Unit/skill/brain/stage/duel đều là POCO do Content dựng từ ScriptableObject; Core chỉ thấy interface/POCO.
 
 ---
 
-## 2. Bản đồ thư mục
+## 1. Bảng tra nhanh — "muốn làm X thì đọc/ở đâu"
 
-| Thư mục | File | Nội dung |
-|---|---|---|
-| `Grid/` | 7 | toạ độ, ô, lưới, hình học |
-| `Units/` | 18 | quân, registry, tìm đường, footprint |
-| `Turn/` | 6 | lượt, AP, thứ tự initiative |
-| `Actions/` | 15 | request, validate, execute |
-| `Combat/` | 45 | damage, status, effect, skill, clash |
-| `Ai/` | 8 | intent, telegraph, brain library, boss phase |
-| `Run/` | 54 | rules, state, stage, session, snapshot, dialogue, **26 event** |
-
-Quy ước: **1 file = 1 type**. Vì vậy 26 event = 26 file nhỏ (~20 dòng mỗi file). Đừng hoảng vì số file.
+| Muốn | Đọc | Ghi chú |
+|------|-----|---------|
+| Biết ô nào đi được, LOS | §3 `IGridMap`, `GridShapes` | `IsWalkable`, `HasLineOfSight` |
+| Biết đường đi/chi phí | §3 `IPathfinder`, `AStarPathfinder` | `FindPath`, `ComputeReachable` |
+| Spawn/move/kiểm tra quân | §4 `IUnitRegistry` | `Add`, `MoveTo`, `CanPlace` |
+| Hiểu một unit runtime | §4 `UnitState` | HP/AP/status/cooldown |
+| Biết lượt/pha hiện tại | §5 `ITurnManager`, `TurnPhase` | có `Duel` |
+| Kiểm tra nút bấm có hợp lệ | §6 `IActionValidator` | trả `ValidationResult` + `ActionError` |
+| Gửi lệnh từ UI | §6, §11 `GameSession.TryExecute` | trả `ActionResult` |
+| Damage/hệ/giáp/status | §7 | `CombatMath`, `DamageCalculator`, `StatusSet` |
+| Viết skill mới | §7.3 + §15.1 | `ISkillBehaviour.BuildEffects` |
+| Clash pha 1 | §8 | `ClashResolver`, `ClashRuleTable` |
+| Duel pha 2 | §9 | `IClashDuel`/`ClashDuel`, `DuelDefinition` |
+| AI/telegraph | §10 | `IEnemyBrain`, `TelegraphService` |
+| Snapshot/rewind | §11 | `SnapshotService`, `GameSnapshot` |
+| Event để UI bind | §12 | 28 event, publish sau khi state ổn định |
+| Chạy test | §17 | dotnet + Unity batchmode |
 
 ---
 
-## 3. Grid — bàn cờ
+## 2. Bản đồ thư mục (163 file)
 
-### `GridCoord` ⭐ — `Grid/GridCoord.cs`
-Toạ độ ô nguyên, bất biến, là struct.
+| Folder | File | Dòng | Nội dung |
+|--------|------|------|----------|
+| `Core/Grid` | 7 | 633 | `GridCoord`, `TerrainId`, `TerrainFlags`, `CellState`, `IGridMap`, `GridMap`, `GridShapes` |
+| `Core/Units` | 18 | 1.060 | `UnitId`, faction/archetype, `MoveProfile`, `UnitDefinition`, `UnitState`, registry, `OccupancyIndex`, pathfinding (`IPathfinder`, `AStarPathfinder`, `PathRequest/Result`, `ReachableSet`, `PathNode`, `PathMinHeap`, `MovementRangeCalculator`) |
+| `Core/Turn` | 6 | 431 | `TurnPhase`, `ActionPoint`, `IInitiativePolicy`, `InitiativePolicy`, `ITurnManager`, `TurnManager` |
+| `Core/Actions` | 15 | 911 | `ActionKind`, `ActionError`, `ActionRequest`, `ValidationResult`, `ActionResult`, `IGameAction` + 5 command, `IActionValidator`, `ActionValidator`, `IGameActionExecutor`, `GameActionExecutor` |
+| `Core/Combat` | 51 | 2.113 | Element/damage/skill/effect/status/Clash/**Duel** |
+| `Core/Ai` | 8 | 268 | `EnemyIntent`, brain + library, `ITelegraphService`, `IBossPhaseController` |
+| `Core/Run` | 57 | 1.946 | rules, RNG, `GameState`, `GameSession`, stage/objective, snapshot, knowledge, dialogue, `IEventBus` + **28 event** |
+| `Core` (root) | 2 | — | `BTH.Core.asmdef`, `AssemblyInfo.cs` |
 
-```csharp
-var c = new GridCoord(2, 3);
-int d = GridCoord.Manhattan(a, b);   // khoảng cách 4 hướng (static, 2 đối số!)
-int e = GridCoord.Chebyshev(a, b);   // khoảng cách 8 hướng
-var zero = GridCoord.None;           // (-1,-1)
-bool ok = c.IsValid;                 // X >= 0 && Y >= 0
-var n = c + GridCoord.North;         // cộng/trừ vector
+**File index theo folder** (để grep nhanh):
+
 ```
-
-Có sẵn `North/South/East/West` (đơn vị 1 ô), `==`, `!=`, `ToString()` dạng `(x,y)`.
-
-> ⚠️ `Manhattan` là **static 2 tham số**, không phải `a.Manhattan(b)`. Đây là lỗi compile hay gặp nhất khi mới dùng.
-
-### `TerrainId` ⭐ — `Grid/TerrainId.cs`
-Chuỗi có sẵn hằng, **không phải enum** (để Content thêm địa hình mới mà không sửa Core).
-
-`TerrainId.Floor / Wall / Pit / Cracked / Poison / Lava / Chest`, so sánh không phân biệt hoa thường, ép từ string: `(TerrainId)"wall"`.
-
-### `TerrainFlags` — `Grid/TerrainFlags.cs`
-`[Flags]`: `None`, `BlocksMove`, `BlocksLineOfSight`, `IsHazard`, `IsCover`, `IsInteractive`.
-
-### `CellState` — `Grid/CellState.cs`
-Một ô: `Coord`, `Terrain`, `Flags`, `MovementCost`, `HazardDamagePerTurn`, `TurnsUntilCollapse`, `Occupant`, `IsLocked`.
-Tiện ích: `IsOccupied`, `BlocksMove`, `BlocksLineOfSight`, `IsHazard`, `IsInteractive`.
-Setter là `internal` — **chỉ Core sửa**; người ngoài đọc.
-
-### `IGridMap` / `GridMap` ⭐ — `Grid/IGridMap.cs`, `Grid/GridMap.cs`
-Bàn cờ thật, lưu mảng phẳng `y * Width + x`.
-
-```csharp
-new GridMap(width, height, events = null);
-map.Get(coord);                 // ném lỗi nếu ngoài lưới → ưu tiên TryGet
-map.TryGet(coord, out cell);
-map.InBounds(coord);
-map.IsBlocked(coord);           // tường/vật cản (không xét quân)
-map.IsWalkable(coord, profile); // xét cả quân, khoá sân, bay
-map.HasLineOfSight(from, to);   // Bresenham, chỉ chặn ở ô giữa
-map.MovementCost(coord);
-map.SetTerrain(coord, terrain, flags, movementCost = 1, hazardDamagePerTurn = 0);
-map.ArmCollapse(coord, turns);  // hẹn sập sau N lượt
-map.TickCollapse();             // gọi trong EndTurn
-map.LockArea(cells);            // khoá sân (pha 2 boss)
-map.UnlockArea();
-map.SetOccupant(coord, unitId); // chỉ UnitRegistry gọi
-event CellChanged;              // Action<GridCoord>
-```
-
-Quy tắc bay: `CanFly` vượt được ô `BlocksMove` **nếu ô đó không `BlocksLineOfSight`** (bay qua vực/bẫy được, xuyên tường thì không).
-
-### `GridShapes` — `Grid/GridShapes.cs`
-Hình học dùng chung, đều trả `List<GridCoord>`:
-
-```csharp
-GridShapes.Directions4                    // mảng 4 hướng
-GridShapes.Neighbours4(center)            // 4 ô kề (1 đối số!)
-GridShapes.Line(from, to)                 // Bresenham, gồm 2 đầu
-GridShapes.Cross(center, radius)          // hình thoi Manhattan
-GridShapes.Square(center, radius)         // hình vuông Chebyshev
-GridShapes.Cone(origin, dirX, dirY, len)  // nón 45°
-GridShapes.Row(origin, dirX, dirY, len)   // hàng thẳng, bỏ ô gốc
-GridShapes.Footprint(anchor, sizeX, sizeY)// các ô của quân nhiều ô
-GridShapes.Contains(cells, coord)
+Grid:     GridCoord TerrainId TerrainFlags CellState IGridMap GridMap GridShapes
+Units:    UnitId UnitFaction UnitArchetype MoveProfile UnitDefinition UnitState
+          IUnitRegistry UnitRegistry OccupancyIndex PathStatus PathRequest PathResult
+          ReachableSet PathNode PathMinHeap IPathfinder AStarPathfinder MovementRangeCalculator
+Turn:     TurnPhase ActionPoint IInitiativePolicy InitiativePolicy ITurnManager TurnManager
+Actions:  ActionKind ActionError ActionRequest ValidationResult ActionResult IGameAction
+          MoveAction AttackAction SkillAction GuardAction EndTurnAction
+          IActionValidator ActionValidator IGameActionExecutor GameActionExecutor
+Combat:   ElementId ElementMatrix CombatMath DamageRequest DamageResult IDamageCalculator DamageCalculator
+          SkillTargeting SkillDefinition ISkillBehaviour ISkillLibrary SkillLibrary
+          IGameEffect EffectQueue EffectContext DamageEffect HealEffect ApplyStatusEffect
+          RemoveStatusEffect PushEffect TeleportEffect SpawnTerrainEffect ArmCollapseEffect
+          LockArenaEffect CameraShakeEffect
+          StatusId StatusIds IStatusEffect StatusContext StatusEntry StatusSet
+          StaggerStatus FlankedStatus RootStatus PoisonStatus GuardStatus
+          ClashRule ClashRuleTable ClashDefinition ClashOutcome ClashPrediction ClashOption
+          IClashResolver ClashResolver ClashResult ClashMath ClashRoundResult
+          DuelDefinition DuelState IClashDuel ClashDuel
+Ai:       EnemyIntent IEnemyBrain IEnemyBrainLibrary EnemyBrainLibrary
+          ITelegraphService TelegraphService IBossPhaseController BossPhaseController
+Run:      IGameRules GameRules IRandomSource XorShiftRandom IGameStateView GameState GameSession
+          StageDefinition UnitSpawnDefinition TerrainOverride IObjectiveEvaluator ObjectiveEvaluator
+          StageResult DialogueNode DialogueChoice DialogueGraph DialogueRunner
+          ISnapshotStore SnapshotStore ISnapshotService SnapshotService SnapshotTrigger
+          GameSnapshot UnitSnapshot StatusSnapshot DuelSnapshot IRunKnowledge RunKnowledge
+          IEventBus EventBus RefEventHandler
+          + 28 event file (xem §12)
 ```
 
 ---
 
-## 4. Units — quân cờ
+## 3. Grid — lưới & địa hình
 
-### `UnitId` ⭐ — `Units/UnitId.cs`
-Số định danh (`int`) bọc struct. `None = 0`, `IsValid = Value > 0`. Registry tự cấp, tăng dần từ 1.
-
-### `UnitFaction` / `UnitArchetype`
-`UnitFaction`: `Player, Ally, Enemy, Neutral`.
-`UnitArchetype`: `Hero, Ally, Minion, Elite, StageBoss, FinalBoss` (2 loại cuối → `IsBoss = true`).
-
-### `MoveProfile` — `Units/MoveProfile.cs`
-Struct readonly, mô tả khả năng di chuyển:
-`MovePoints`, `CanFly`, `IgnoresHazard`, `CanPassUnits`; factory `MoveProfile.Walk(n)` / `MoveProfile.Fly(n)`.
-
-### `UnitDefinition` — `Units/UnitDefinition.cs`
-"Dữ liệu tĩnh" của một quân (POCO, settable):
-
-`Id, DisplayName, Faction, Archetype, MaxHp, Attack, Armor, Initiative, SizeX, SizeY, Move, NativeElement, SkillIds, BrainId, PortraitId`, `IsBoss`.
-
-Content sẽ dựng object này từ ScriptableObject; Core chỉ đọc.
-
-### `UnitState` ⭐ — `Units/UnitState.cs`
-"Trạng thái sống" của một quân trong ván. **Constructor là `internal`** — không tự `new`; hãy dùng `UnitRegistry.Add(definition, anchor)`.
-
-Đọc thường dùng:
+### 3.1 `GridCoord` (struct)
 
 ```csharp
-unit.Id; unit.Definition; unit.Faction; unit.Archetype; unit.IsBoss;
-unit.Hp; unit.MaxHp; unit.HpRatio; unit.IsAlive;
-unit.Position;                 // ô neo (góc min của footprint)
-unit.Center;                   // tâm — dùng để đo tầm đánh
-unit.Footprint;                // các ô đang chiếm
-unit.ActionPoints;             // AP còn lại
-unit.HasMovedThisTurn; unit.HasActedThisTurn;
-unit.Statuses;                 // StatusSet
-unit.IsStaggered / IsRooted / IsGuarding / IsFlanked;
-unit.MovePoints; unit.Move;
+new GridCoord(int x, int y)
+int X, Y
+static GridCoord None;          // (-1,-1)
+static GridCoord North/South/East/West
+bool IsValid;                   // X >= 0 && Y >= 0
+static int Manhattan(GridCoord a, GridCoord b)
+static int Chebyshev(GridCoord a, GridCoord b)
+operator +, -, ==, !=
 ```
 
-Setter (`Hp`, `Position`, `ActionPoints`, cờ lượt, cooldown) là `internal`: chỉ Executor/TurnManager/Snapshot được sửa.
+- Toạ độ là **ô**, gốc `(0,0)` ở góc dưới-trái theo quy ước của Core (không phụ thuộc Unity).
+- `None` dùng cho "không có toạ độ"; đừng dùng `(0,0)` để biểu diễn "không có".
 
-### `IUnitRegistry` / `UnitRegistry` ⭐ — `Units/IUnitRegistry.cs`, `Units/UnitRegistry.cs`
+### 3.2 `TerrainId` / `TerrainFlags` / `CellState`
 
 ```csharp
-new UnitRegistry(grid, events = null);
-reg.All; reg.Player; reg.Boss;          // Player/Boss có thể null nếu màn không có
-reg.Alive(UnitFaction.Enemy);
-reg.Get(id); reg.TryGet(id, out unit);
-reg.At(coord); reg.IsOccupied(coord);
-reg.CanPlace(def, anchor);              // kiểm tra đặt quân
-reg.CanPlace(def, anchor, ignore);      // bỏ qua chính mình (push/teleport)
-reg.Add(def, anchor);                   // → UnitState + UnitSpawnedEvent; ném lỗi nếu bị chặn
-reg.MoveTo(id, anchor);                 // đổi vị trí, KHÔNG phát event; ném lỗi nếu bị chặn
-reg.Remove(id);                         // despawn, không event
-reg.Kill(id);                           // HP→0 + UnitDiedEvent (đúng 1 lần)
-reg.UnitsIn(cells); reg.AdjacentTo(coord); // quân có ô chạm cạnh coord
+// TerrainId: wrapper chuỗi, so sánh OrdinalIgnoreCase
+TerrainId.Floor / Wall / Pit / Cracked / Poison / Lava / Chest / None
+(TerrainId)"my-terrain"; (string)id
+
+// TerrainFlags: [Flags]
+None = 0, BlocksMove = 1, BlocksLineOfSight = 2,
+IsHazard = 4, IsCover = 8, IsInteractive = 16
 ```
 
-`Add` tự cấp id, cập nhật occupancy + `grid.SetOccupant`. `Kill` chống phát event trùng nhờ cờ `DeathPublished`.
+`CellState` (class, sửa được bởi Core):
 
-### Đường đi — `Units/AStarPathfinder` ⭐
+| Thuộc tính | Ý nghĩa |
+|-----------|---------|
+| `Coord` | toạ độ ô |
+| `Terrain`, `Flags` | địa hình + cờ |
+| `HazardDamagePerTurn` | sát thương mỗi lượt nếu đứng trên |
+| `TurnsUntilCollapse` | 0 = không sập; >0 = còn N lượt |
+| `MovementCost` | mặc định 1 |
+| `Occupant` | `UnitId` đang chiếm (None nếu trống) |
+| `IsLocked` | ô bị khoá arena (không vào được) |
+| `IsOccupied`, `BlocksMove`, `BlocksLineOfSight`, `IsHazard`, `IsInteractive` | tiện ích đọc |
+
+### 3.3 `IGridMap` / `GridMap`
 
 ```csharp
-var pathfinder = new AStarPathfinder(grid);
-PathResult r = pathfinder.FindPath(new PathRequest(start, goal, profile, maxCost: 0, ignoreUnit));
-ReachableSet reach = pathfinder.ComputeReachable(start, profile, maxCost, selfId);
+int Width, Height
+bool InBounds(GridCoord)
+CellState Get(GridCoord)                 // ném ArgumentOutOfRange nếu ngoài lưới
+bool TryGet(GridCoord, out CellState)
+bool IsBlocked(GridCoord)                // BlocksMove || IsLocked
+bool IsWalkable(GridCoord, MoveProfile)  // khoá + occupant + bẫy (xem dưới)
+bool HasLineOfSight(GridCoord from, GridCoord to)   // Bresenham, bỏ 2 đầu
+int  MovementCost(GridCoord)
+bool IsLocked(GridCoord)
+
+void SetTerrain(GridCoord, TerrainId, TerrainFlags, int movementCost = 1, int hazardDamagePerTurn = 0)
+void ArmCollapse(GridCoord, int turns)
+void TickCollapse()                       // gọi cuối lượt: ô hết hạn → Pit + BlocksMove + event
+void LockArea(IEnumerable<GridCoord>)
+void UnlockArea()
+void SetOccupant(GridCoord, UnitId)
+
+event Action<GridCoord> CellChanged       // C# event song song với CellChangedEvent
 ```
 
-- `PathResult`: `Status` (`Found/NoPath/OutOfRange/InvalidStart/InvalidTarget`), `Path` (**gồm cả ô xuất phát**), `Cost`, `IsFound`, `Goal`.
-- `PathStatus.OutOfRange` chỉ xuất hiện khi `maxCost > 0`.
-- `ReachableSet`: `Origin`, `Cells` (sort Y rồi X), `Costs`, `Count`, `Contains`, `CostTo` (trả -1 nếu không tới được).
-- `MovementRangeCalculator.Compute(...)` là tiện ích bọc ngoài.
+**Luật đi được (`IsWalkable`)** — thứ tự:
 
-Tất định: tie-break `f → h → index`, không phụ thuộc thứ tự Dictionary.
+1. Ô ngoài lưới hoặc `IsLocked` → **không**.
+2. Có unit khác và profile **không** `CanPassUnits` → **không**.
+3. Ô `BlocksMove`:
+   - đi bộ → **không**;
+   - `CanFly` **chỉ** bay qua được nếu ô đó **không** `BlocksLineOfSight` → bay qua `Pit`/hazard được, nhưng **tường vẫn chặn**.
+4. Còn lại → **được**.
+
+**Sập ô:** `TickCollapse()` biến ô hết `TurnsUntilCollapse` thành `TerrainId.Pit` + `BlocksMove`, phát `CellCollapsedEvent`. `TurnManager.EndTurn` gọi nó sau bước hazard.
+
+### 3.4 `GridShapes` (static)
+
+```csharp
+static GridCoord[] Directions4;                    // North, East, South, West
+List<GridCoord> Neighbours4(GridCoord center)
+List<GridCoord> Line(GridCoord from, GridCoord to)  // Bresenham, gồm 2 đầu
+List<GridCoord> Cross(GridCoord center, int radius) // hình thoi Manhattan
+List<GridCoord> Square(GridCoord center, int radius)// hình vuông Chebyshev
+List<GridCoord> Cone(GridCoord origin, int dirX, int dirY, int length)
+List<GridCoord> Row(GridCoord origin, int dirX, int dirY, int length)  // bỏ ô gốc
+List<GridCoord> Footprint(GridCoord anchor, int sizeX, int sizeY)      // neo = góc min, +X/+Y
+bool Contains(List<GridCoord> cells, GridCoord coord)
+```
+
+Lưu ý: các hàm trả **ô trong lưới hình học**, chưa lọc biên; nơi dùng phải tự lọc `grid.InBounds` nếu cần. Khi tính AoE cho unit 2×2, giao kết quả với `unit.Footprint`.
+
+### 3.5 Pathfinding
+
+```csharp
+// PathStatus: Found, NoPath, OutOfRange, InvalidStart, InvalidTarget
+struct PathRequest { Start, Goal, Profile, MaxCost = 0, IgnoreUnit = default }
+struct PathResult  { Status, Path (gồm ô start khi Found), Cost; Found(...), Fail(...), IsFound, Goal }
+class ReachableSet { Origin, Count, Cells (sort Y rồi X), Costs, Contains(c), CostTo(c) }
+interface IPathfinder {
+  PathResult FindPath(PathRequest request);
+  ReachableSet ComputeReachable(GridCoord start, MoveProfile profile, int maxCost, UnitId self = default);
+}
+class AStarPathfinder : IPathfinder { AStarPathfinder(IGridMap grid); }
+static class MovementRangeCalculator {
+  ReachableSet Compute(IPathfinder, IGridMap, GridCoord start, MoveProfile, int movePoints, UnitId self);
+}
+```
+
+Hành vi A*:
+
+- 4 hướng, **không đi chéo**.
+- Chi phí vào ô = `MovementCost` (tối thiểu 1).
+- Tie-break: `f` → `h` → thứ tự push (để tất định).
+- `MaxCost > 0`: hết ngân sách trước khi tới đích → `OutOfRange`; không có đường → `NoPath`.
+- `IgnoreUnit` cho phép coi unit đó "không tồn tại" (dùng khi push/teleport).
+- `ComputeReachable` là Dijkstra (không heuristic), bỏ ô start khỏi `Cells`.
 
 ---
 
-## 5. Turn — lượt
+## 4. Units — đơn vị
 
-### `TurnPhase`
-`None, StageIntro, Telegraph, Player, Enemy, TurnEnd, Clash, StageEnded`.
-
-### `ActionPoint` — `Turn/ActionPoint.cs`
-Struct nhỏ: `Current`, `Max`, `IsEmpty`, `CanSpend(cost)`, `Spend(cost)` → trả `ActionPoint` mới (bất biến).
-
-### `InitiativePolicy` — `Turn/InitiativePolicy.cs`
-`Order(units)` → sort Initiative giảm dần, hoà thì `UnitId` tăng dần, bỏ quân chết.
-
-### `ITurnManager` / `TurnManager` ⭐ — `Turn/ITurnManager.cs`, `Turn/TurnManager.cs`
+### 4.1 Kiểu cơ bản
 
 ```csharp
-new TurnManager(state, initiative = null, objective = null);
-turn.Phase; turn.TurnIndex; turn.TurnLimit; turn.ActiveUnit; turn.EnemyOrder;
-turn.StartStage(stage); turn.BeginTelegraph();
-turn.BeginPlayerPhase(); turn.EndPlayerPhase();
-turn.BeginEnemyPhase(); turn.EndEnemyPhase();
-turn.EndTurn(); turn.BeginClash(); turn.FinishStage(result);
-turn.CanSpend(unitId, cost); turn.TrySpend(unitId, cost);   // TrySpend phát ApChangedEvent
-turn.ResetActionPoints(); turn.NextEnemy();
+struct UnitId { int Value; static None = 0; bool IsValid => Value > 0; ==, != }
+enum UnitFaction { Player, Ally, Enemy, Neutral }
+enum UnitArchetype { Hero, Ally, Minion, Elite, StageBoss, FinalBoss }
+struct MoveProfile { int MovePoints; bool CanFly, IgnoresHazard, CanPassUnits;
+                     static Walk(n), Fly(n); ctor(movePoints, canFly, ignoresHazard, canPassUnits) }
 ```
 
-`EndTurn()` chạy đúng thứ tự (đừng tự gọi tay các bước):
-1. phase `TurnEnd`
-2. tick status (`TickTurnEnd` → cooldown → `TickTurnStart`)
-3. tick hazard dưới footprint (bỏ qua `IgnoresHazard`) → `TickCollapse`
-4. `TurnIndex++` + `TurnAdvancedEvent`
-5. `ObjectiveEvaluator.Evaluate`
-6. nếu chưa xong: `ResetActionPoints` + checkpoint `TurnStart` + `BeginTelegraph`
+`MoveProfile.Walk(2)` = 2 ô, không bay, hazard có tác dụng, không xuyên unit.
+`MoveProfile.Fly(3)` = 3 ô, bay (bỏ qua pit/hazard trong path), có thể `IgnoresHazard = true` nếu muốn miễn hazard hoàn toàn.
 
-`TurnLimit` lấy từ `Stage.TurnLimit` nếu có, ngược lại `Rules.TurnLimit`.
+### 4.2 `UnitDefinition` (POCO, do Content dựng)
+
+| Thuộc tính | Ghi chú |
+|-----------|---------|
+| `Id` (string) | duy nhất, dùng cho `BrainId`/portrait/asset |
+| `DisplayName` | hiển thị |
+| `Faction`, `Archetype` | phe + loại |
+| `MaxHp`, `Attack`, `Armor`, `Initiative` | chỉ số |
+| `SizeX/SizeY` | mặc định 1×1; Malkor 2×2 |
+| `Move` | `MoveProfile` |
+| `NativeElement` | hệ gốc (ảnh hưởng damage nếu dùng) |
+| `SkillIds` | danh sách id skill được dùng |
+| `BrainId` | id brain cho AI |
+| `PortraitId` | id portrait |
+| `IsBoss` | `Archetype` là `StageBoss`/`FinalBoss` |
+
+### 4.3 `UnitState` (runtime)
+
+```csharp
+UnitId Id; UnitDefinition Definition; UnitFaction Faction; UnitArchetype Archetype;
+bool IsBoss; int MaxHp; int Hp; float HpRatio; bool IsAlive;   // IsAlive = Hp > 0
+GridCoord Position; int ActionPoints;
+bool HasMovedThisTurn, HasActedThisTurn;
+StatusSet Statuses;
+int SizeX, SizeY; IReadOnlyList<GridCoord> Footprint; GridCoord Center;
+int MovePoints; MoveProfile Move;
+bool IsStaggered, IsRooted, IsGuarding, IsFlanked;
+bool InCells(IReadOnlyList<GridCoord> cells);
+```
+
+- `Position` là ô neo (góc min của footprint).
+- `Center = (X + (SizeX-1)/2, Y + (SizeY-1)/2)`; khoảng cách tấn công dùng `Center`.
+- Cooldown skill lưu theo `skillId` (string): `GetCooldown`, `SetCooldown`, `TickCooldowns` (giảm 1 mỗi lượt), `CopyCooldowns`/`RestoreCooldowns` cho snapshot.
+- **Không** sửa `Hp`/`Position` từ ngoài Core: setter là `internal`, chỉ `UnitRegistry`/`DamageCalculator`/effect gọi.
+
+### 4.4 `IUnitRegistry` / `UnitRegistry`
+
+```csharp
+IReadOnlyList<UnitState> All;
+UnitState Player;   // có thể null
+UnitState Boss;     // có thể null
+IReadOnlyList<UnitState> Alive(UnitFaction faction);
+UnitState Get(UnitId); bool TryGet(UnitId, out UnitState);
+UnitState At(GridCoord);  bool IsOccupied(GridCoord);
+bool CanPlace(UnitDefinition, GridCoord anchor);
+bool CanPlace(UnitDefinition, GridCoord anchor, UnitId ignore);  // bỏ qua chính mình
+UnitState Add(UnitDefinition, GridCoord anchor);                 // → UnitSpawnedEvent
+void Remove(UnitId);                                             // despawn, không event
+void MoveTo(UnitId, GridCoord anchor);                           // KHÔNG phát event
+IReadOnlyList<UnitState> UnitsIn(IReadOnlyList<GridCoord> cells);
+IReadOnlyList<UnitState> AdjacentTo(GridCoord coord);            // ô chạm cạnh
+void Kill(UnitId);                                               // SetHp(0) + UnitDiedEvent (đúng 1 lần)
+```
+
+- `Add`/`MoveTo` ném `InvalidOperationException` nếu `CanPlace` false.
+- `Player`/`Boss` có thể `null` (chưa spawn) — luôn kiểm tra.
+- `Kill` có cờ `DeathPublished` để không phát `UnitDiedEvent` hai lần (kể cả khi HP đã về 0 trước đó).
+- `Remove` dùng khi despawn có chủ đích (không tính là chết).
+
+### 4.5 `OccupancyIndex`
+
+Map `GridCoord → UnitId` cho footprint nhiều ô. `Add(unit)`, `Remove(unit)`, `Move(id, from, to)`, `TryGet`, `IsOccupied`, `At`, `Clear`, `Count`. `UnitRegistry` tự cập nhật; Content/UI hiếm khi cần dùng trực tiếp.
 
 ---
 
-## 6. Actions — ra lệnh
-
-### `ActionKind` / `ActionError`
-`ActionKind`: `Move, Attack, Skill, Guard, Wait, EndTurn, Reset, ClashSkill` (hiện Executor xử lý tất cả trừ `Wait`/`Reset` — đừng dùng 2 loại này).
-
-`ActionError`: `None, UnknownActor, UnitDead, NotPlayerPhase, NotEnemyPhase, NoActionPoints, OutOfRange, TargetEmpty, NoLineOfSight, CellBlocked, CellOccupied, NotEnoughMovePoints, SkillNotReady, SkillOnCooldown, CannotMoveRooted, ActorStunned, StageEnded, InvalidTarget, ClashNotAvailable, ObjectiveAlreadyEnded, AlreadyMoved, AlreadyActed`.
-
-### `ActionRequest` ⭐ — `Actions/ActionRequest.cs`
-Struct readonly; dùng các factory thay vì tự new:
+## 5. Turn — lượt, pha, AP
 
 ```csharp
-ActionRequest.Move(actor, destination);
-ActionRequest.Attack(actor, targetCell);
-ActionRequest.Skill(actor, skillId, targetCell);
-ActionRequest.Guard(actor);
-ActionRequest.EndTurn(actor);
-ActionRequest.ClashSkill(actor, skillId);
+enum TurnPhase { None, StageIntro, Telegraph, Player, Enemy, TurnEnd, Clash, StageEnded, Duel }
+
+struct ActionPoint { int Current, Max; bool IsEmpty; bool CanSpend(int); ActionPoint Spend(int); }
+
+interface IInitiativePolicy { List<UnitId> Order(IReadOnlyList<UnitState> units); }
+class InitiativePolicy : IInitiativePolicy   // Initiative ↓, hoà UnitId ↑, bỏ unit chết
 ```
-
-### `ValidationResult` / `ActionResult`
-`IsValid/Success` + `Error` + `Message`. Tạo bằng `Ok()` / `Fail(error, message)`.
-
-### `IActionValidator` / `ActionValidator` ⭐ — `Actions/ActionValidator.cs`
 
 ```csharp
-var validator = new ActionValidator(state.Pathfinder);   // pathfinder = null cũng được
-ValidationResult v = validator.Validate(request, state);  // THUẦN: không sửa state
-IReadOnlyList<GridCoord> cells = validator.GetValidTargets(request, state); // cho UI highlight
+interface ITurnManager {
+  TurnPhase Phase; int TurnIndex, TurnLimit; UnitId ActiveUnit;
+  IReadOnlyList<UnitId> EnemyOrder;
+  void StartStage(StageDefinition stage);
+  void BeginTelegraph(); void BeginPlayerPhase(); void EndPlayerPhase();
+  void BeginEnemyPhase(); void EndEnemyPhase(); void EndTurn();
+  void BeginClash(); void BeginDuel(); void FinishStage(StageResult result);
+  bool CanSpend(UnitId unit, int cost); bool TrySpend(UnitId unit, int cost);
+  void ResetActionPoints(); UnitId NextEnemy();
+}
+class TurnManager : ITurnManager { TurnManager(GameState, IInitiativePolicy = null, IObjectiveEvaluator = null); }
 ```
 
-Thứ tự kiểm: màn đã kết thúc → actor tồn tại → còn sống → phase → choáng → luật riêng từng lệnh.
+### 5.1 Ý nghĩa từng pha
 
-### `IGameAction` + 5 action class
-`MoveAction`, `AttackAction`, `SkillAction`, `GuardAction`, `EndTurnAction` — biểu diễn command (`Id/Kind/Actor/Target`). `GameSession` dùng thẳng `ActionRequest`, nên các class này chủ yếu để log/debug/queue về sau.
+| Pha | Ai mở | Việc xảy ra |
+|-----|-------|-------------|
+| `StageIntro` | `StartStage` | phát `StageStartedEvent` + `TurnPhaseStartedEvent`, rồi `BeginTelegraph` |
+| `Telegraph` | `GameSession.PlanEnemyIntents` | AI công bố `EnemyIntent` (GameSession gọi trước `BeginPlayerPhase`) |
+| `Player` | `BeginPlayerPhase` | reset AP = 2; nhận `ActionRequest` |
+| `Enemy` | `BeginEnemyPhase` | rebuild `EnemyOrder`, reset AP cho enemy; `GameSession` resolve intent |
+| `TurnEnd` | `EndTurn` | tick status → hazard → collapse → `TurnIndex++` → objective |
+| `Clash` | `BeginClash` | Clash pha 1 (trên bàn cờ), đẩy checkpoint `ClashStart` |
+| `Duel` | `BeginDuel` | Duel pha 2: không AP/lưới/EndTurn |
+| `StageEnded` | `FinishStage` | set `Result`, phát `StageEndedEvent` |
 
-### `GameActionExecutor` ⭐ — `Actions/GameActionExecutor.cs`
+### 5.2 Thứ tự `TurnManager.EndTurn()` (chính xác)
 
-```csharp
-var executor = new GameActionExecutor(validator, objectiveEval = null);
-ActionResult r = executor.Execute(request, state);  // sửa state do lệnh; vòng lượt do TurnManager
+```
+1. Nếu state.IsOver hoặc Phase == Duel → return
+2. Phase = TurnEnd
+3. Với mỗi unit còn sống:
+      Statuses.TickTurnEnd(ctx)   // poison trừ HP, guard hết hạn; status !CanTick bị bỏ qua
+      TickCooldowns()             // -1 mỗi lượt
+      nếu còn sống: Statuses.TickTurnStart(ctx)   // bật CanTick cho status vừa gắn
+4. Hazard: mỗi ô hazard trong footprint (bỏ qua IgnoresHazard)
+      → HazardTriggeredEvent → Damage.Apply(..., ignoresArmor: true)
+5. Grid.TickCollapse()            // ô nứt sập
+6. TurnIndex++ + TurnAdvancedEvent
+7. ObjectiveEvaluator.Evaluate
+8. Nếu kết thúc → FinishStage(result)
+9. Ngược lại → ResetActionPoints() → PushCheckpoint(TurnStart) → BeginTelegraph()
 ```
 
-Thứ tự trong mỗi lệnh: trừ AP → đổi state → dựng/chạy effect → phát event → `FinishIfOver` (giết boss thì kết thúc màn ngay).
+`GameSession.EndTurn()` (dùng cho gameplay) mới là bên chạy thêm pha Enemy và công bố telegraph cho lượt kế:
+
+```
+BeginEnemyPhase → RunEnemyBrains (resolve intent đã công bố) → EndEnemyPhase
+→ Turn.EndTurn() → PlanEnemyIntents → BeginPlayerPhase
+```
+
+> Mẹo: `ActionRequest.EndTurn` qua `TryExecute` **không** chạy AI — dùng trong test hoặc khi UI muốn tách nhịp.
+
+### 5.3 AP & hành động
+
+- 2 AP/lượt; Move tốn 1 AP (và tối đa `MovePoints` ô), Attack/Skill/Guard tốn 1 AP (skill có `ApCost` riêng).
+- `TrySpend` phát `ApChangedEvent`; `CanSpend` trả false nếu cost ≤ 0, unit chết hoặc `IsStaggered`.
+- `HasMovedThisTurn`/`HasActedThisTurn` reset trong `BeginPlayerPhase` (qua `ResetActionPoints` + reset cờ).
 
 ---
 
-## 7. Combat — chiến đấu
-
-### `ElementId` / `ElementMatrix`
-`ElementId`: `Physical, Fire, Holy, Necrotic, Piercing, Temporal, None` (chuỗi).
-`ElementMatrix.CreateDefault()`: Holy→Necrotic ×1.5, Holy→Fire ×1.25, Fire→Necrotic ×1.25, Necrotic→Holy ×0.75; Temporal trung tính. Có `Set`, `GetMultiplier`, `Clone`.
-
-### `DamageRequest` / `DamageResult`
-`DamageRequest` (readonly fields): `Source, Target, BasePower, Element, IsSkill, IgnoresArmor, HitFrom`.
-`DamageResult`: `FinalDamage, Multiplier, WasStaggered, WasGuarded, WasFlanked, Killed, IsZero`.
-
-### `CombatMath` ⭐ — `Combat/CombatMath.cs`
-Công thức duy nhất, mọi nơi dùng lại:
+## 6. Actions — command
 
 ```csharp
-int power = CombatMath.ComputePower(basePower, armor, elementMult,
-                                   ignoresArmor, statusMult);
-// base × element − armor (nếu không xuyên giáp) → min 1
-// × statusMult → Math.Round → min 1
+enum ActionKind { Move, Attack, Skill, Guard, Wait, EndTurn, Reset, ClashSkill }
+
+enum ActionError {
+  None, UnknownActor, UnitDead, NotPlayerPhase, NotEnemyPhase, NoActionPoints,
+  OutOfRange, TargetEmpty, NoLineOfSight, CellBlocked, CellOccupied, NotEnoughMovePoints,
+  SkillNotReady, SkillOnCooldown, CannotMoveRooted, ActorStunned, StageEnded,
+  InvalidTarget, ClashNotAvailable, ObjectiveAlreadyEnded, AlreadyMoved, AlreadyActed, WrongPhase
+}
+
+struct ActionRequest {
+  UnitId Actor; ActionKind Kind; GridCoord TargetCell; string SkillId; GridCoord MoveTo;
+  static Move(actor, destination); static Attack(actor, target);
+  static Skill(actor, skillId, target); static Guard(actor);
+  static EndTurn(actor); static ClashSkill(actor, skillId);
+}
+
+struct ValidationResult { bool IsValid; ActionError Error; string Message; Ok()/Fail(...); }
+struct ActionResult     { bool Success; ActionError Error; string Message; Ok()/Fail(...); }
 ```
 
-Hệ quả: giáp nặng vẫn chịu tối thiểu 1; Guard ×0.2; Stagger ×2; Flanked ×1.5.
+### 6.1 `GameActionExecutor.Execute` — các nhánh
 
-### `IDamageCalculator` / `DamageCalculator` — `Combat/DamageCalculator.cs`
+| Kind | Điều kiện chính | Tác dụng | Event |
+|------|-----------------|----------|-------|
+| `Move` | pha Player, !Rooted, !AlreadyMoved, AP ≥ 1, path Found | `TrySpend(1)`, `Units.MoveTo`, `HasMovedThisTurn = true` | `UnitMovedEvent(unit, from, to, cost)` + `UnitActedEvent` |
+| `Attack` | pha Player, !AlreadyActed, AP ≥ 1, target địch kề (Manhattan Center ≤ 1) | `DamageEffect(ATK, NativeElement)` → `EffectQueue.Run`, `TrySpend(1)`, `HasActed` | `UnitActedEvent` (+ `DamageDealt/UnitDied`) |
+| `Skill` | pha Player, sở hữu skill, cooldown 0, AP ≥ `ApCost`, target hợp lệ | `TrySpend(ApCost)`, `SetCooldown`, `Behaviour.BuildEffects` hoặc damage mặc định | `SkillUsedEvent` + `UnitActedEvent` |
+| `Guard` | pha Player, !AlreadyActed, AP ≥ 1 | thêm `GuardStatus` (−80% damage) | `UnitActedEvent` |
+| `ClashSkill` | pha Clash (hoặc Duel → nhánh riêng) | Clash pha 1: `state.Clash.Resolve` | `ClashResolvedEvent` |
+| `EndTurn` | pha Player | `Turn.EndTurn()` | `TurnAdvancedEvent`… |
+
+Trong **Duel**, `Execute` rẽ nhánh:
+
+- `ActionRequest.ClashSkill` → `ExecuteDuelClash` → `ClashDuel.Choose(skillId)` → `SkillUsedEvent` + `UnitActedEvent`.
+- `ActionRequest.Attack` (khi `AwaitingFinisher`) → `ExecuteDuelFinisher` → `ClashDuel.TryFinisher` → `UnitActedEvent`.
+
+Sau mỗi nhánh (trừ EndTurn), executor gọi `FinishIfOver`: objective ≠ None && phase ≠ StageEnded → `Turn.FinishStage`.
+
+### 6.2 `ActionValidator` — luật kiểm (theo thứ tự)
+
+Chung:
+
+1. `state` null/`IsOver` → `ObjectiveAlreadyEnded`.
+2. actor không tồn tại → `UnknownActor`; unit chết → `UnitDead`.
+3. **Duel?** → `ValidateDuel` (mục 6.3).
+4. `EndTurn` chỉ khi pha Player (ngoài Duel); `ClashSkill` pha 1 chỉ khi pha Clash + có `state.Clash` + skill `IsClashSkill`.
+5. Các kind khác: phải pha Player; unit `IsStaggered` → `ActorStunned`.
+6. `Move`: `IsRooted` → `CannotMoveRooted`; `HasMovedThisTurn` → `AlreadyMoved`; AP; `InBounds` → `OutOfRange`; ô chặn (trừ bay hợp lệ) → `CellBlocked`; A* path: `OutOfRange` → `NotEnoughMovePoints`, còn lại → `CellBlocked`.
+7. `Attack`: `HasActed` → `AlreadyActed`; AP; `At(cell)` null → `TargetEmpty`; cùng faction → `InvalidTarget`; `Manhattan(Center, Center) > 1` → `OutOfRange`.
+8. `Skill`: `HasActed`; skill không tồn tại → `SkillNotReady`; không sở hữu → `SkillNotReady`; cooldown > 0 → `SkillOnCooldown`; AP; target:
+   - `Targeting.Self` yêu cầu `TargetCell == Position`;
+   - ngoài lưới → `OutOfRange`;
+   - `RequiresLineOfSight` → không LOS → `NoLineOfSight`;
+   - `Targeting.Unit` yêu cầu unit sống tại ô → `TargetEmpty`;
+   - khoảng cách `RangeMin..RangeMax` → ngoài → `OutOfRange`.
+9. `Guard`: `HasActed`; AP.
+
+`GetValidTargets(request, state)` trả danh sách ô để UI tô sáng:
+
+- Move → `ComputeReachable` bỏ ô hiện tại;
+- Attack → 4 ô kề có địch;
+- Skill → quét lưới, lọc qua `ValidateSkillTarget` (Self trả ô actor);
+- Guard/EndTurn → ô actor;
+- **Duel**: Attack + `AwaitingFinisher` → ô boss; ClashSkill → ô actor.
+
+### 6.3 `ValidateDuel` (Duel mode)
+
+| Trường hợp | Kết quả |
+|-----------|---------|
+| `state.Duel == null` hoặc `!IsActive` | `ClashNotAvailable` |
+| Duel đã kết thúc | `StageEnded` |
+| `ClashSkill` khi đang `AwaitingFinisher` | `WrongPhase` |
+| `ClashSkill` không phải `IsClashSkill` | `InvalidTarget` |
+| Skill không nằm trong `DuelDefinition.PlayerSkillIds` | `SkillNotReady` |
+| Actor không sở hữu skill | `SkillNotReady` |
+| `Attack` khi **không** `AwaitingFinisher` | `WrongPhase` |
+| `Attack` target không phải ô boss | `InvalidTarget` |
+| Mọi kind khác (Move/Guard/EndTurn…) | `WrongPhase` |
+
+---
+
+## 7. Combat — sát thương, skill, hiệu ứng, trạng thái
+
+### 7.1 Hệ & ma trận
 
 ```csharp
-new DamageCalculator(matrix = null);   // null → ElementMatrix.CreateDefault()
-DamageResult c = calc.Compute(request, state);  // chỉ tính
-DamageResult a = calc.Apply(request, state);    // trừ HP, NotifyDamaged, DamageDealtEvent, Kill nếu chết
+struct ElementId { string Value; static None, Physical, Fire, Holy, Necrotic, Piercing, Temporal;
+                   ==, !=, IsEmpty; (ElementId)"custom" }
+
+class ElementMatrix {
+  static ElementMatrix CreateDefault();
+  void Set(ElementId attack, ElementId defend, float multiplier);
+  float GetMultiplier(ElementId attack, ElementId defend);
+  ElementMatrix Clone();
+}
 ```
 
-### `StatusSet` ⭐ + 5 status — `Combat/StatusSet.cs`
+`ElementMatrix` mặc định:
+
+| Attack \ Defend | Necrotic | Fire | Khác |
+|-----------------|----------|------|------|
+| Holy | 1.5 | 1.25 | 1.0 |
+| Fire | 1.25 | 1.0 | 1.0 |
+| Necrotic | 1.0 | 1.0 | 0.75 vs Holy |
+| Temporal | luôn 1.0 | | |
+
+### 7.2 Damage
 
 ```csharp
-unit.Statuses.Has(StatusIds.Poison);
-unit.Statuses.GetRemaining(StatusIds.Poison);
-unit.Statuses.Add(new PoisonStatus(3, 2), new StatusContext(unit, events, units));
-unit.Statuses.Remove(StatusIds.Guard);
-unit.Statuses.DamageTakenMultiplier;  // tích các hệ số
+struct DamageRequest {
+  UnitId Source, Target; int BasePower; ElementId Element;
+  bool IsSkill, IgnoresArmor; GridCoord HitFrom;
+  ctor(source, target, basePower, element, isSkill = false, ignoresArmor = false, hitFrom = default)
+}
+
+struct DamageResult {
+  int FinalDamage; float Multiplier;
+  bool WasStaggered, WasGuarded, WasFlanked, Killed; bool IsZero;
+}
+
+interface IDamageCalculator {
+  DamageResult Compute(DamageRequest request, GameState state);
+  DamageResult Apply(DamageRequest request, GameState state);
+}
+class DamageCalculator : IDamageCalculator { DamageCalculator(ElementMatrix matrix = null); }
+
+static class CombatMath {
+  int ComputePower(int basePower, int armor, float elementMultiplier, bool ignoresArmor, float statusMultiplier);
+  float CombineMultipliers(float element, float status);
+}
 ```
 
-| Status | Hệ số nhận damage | Khoá hành động | Khoá di chuyển | Ghi chú |
-|---|---|---|---|---|
-| `StaggerStatus` | ×2 | ✔ | ✔ | mặc định 1 lượt |
-| `GuardStatus` | ×0.2 | ✘ | ✘ | hết sau 1 lượt |
-| `FlankedStatus` | ×1.5 | ✘ | ✘ | tự xoá khi bị đánh |
-| `RootStatus` | ×1 | ✘ | ✔ | 1 lượt |
-| `PoisonStatus` | ×1 | ✘ | ✘ | trừ HP cuối lượt, phát `DamageDealtEvent` Necrotic |
+Công thức:
 
-Quan trọng: status gắn **giữa lượt** có `CanTick = false` → cuối lượt đó không tick; sang lượt kế mới bắt đầu đếm. Nhờ vậy Stagger sau Clash còn tác dụng sang lượt người chơi.
-
-### `IGameEffect` + các effect ⭐ — `Combat/*Effect.cs`
-Mỗi hiệu ứng là một object nhỏ, có `Priority` và `Resolve(ctx)`. `EffectQueue` sort ổn định theo priority, dừng nếu nguồn chết.
-
-| Effect | Priority | Tác dụng |
-|---|---|---|
-| `DamageEffect(target, power, element, isSkill, ignoresArmor)` | 10 | gây damage (None → dùng `ctx.Target`) |
-| `HealEffect(target, amount)` | 12 | hồi máu |
-| `ApplyStatusEffect(target, effect)` | 20 | gắn status |
-| `RemoveStatusEffect(target, statusId)` | 21 | bỏ status |
-| `PushEffect(target, direction, distance)` | 30 | đẩy, dừng khi gặp vật cản |
-| `TeleportEffect(target, destination)` | 35 | dịch chuyển |
-| `SpawnTerrainEffect(cell, terrain, flags, moveCost, hazard, collapseIn)` | 40 | đổi địa hình |
-| `ArmCollapseEffect(cell, turns)` | 41 | hẹn sập ô |
-| `LockArenaEffect(cells)` | 45 | khoá sân |
-| `CameraShakeEffect(strength, duration)` | 90 | gợi ý rung camera |
-
-`EffectContext` cung cấp: `State, Queue, Units, Events, Random, Source, Origin, Target, TargetCell, Skill, Power, Element, TargetUnit, ResolvedCell, UnitAt(cell)`.
-
-### `SkillDefinition` / `ISkillBehaviour` / `SkillLibrary` ⭐
-
-```csharp
-var skill = new SkillDefinition {
-    Id = "holy-pillar", DisplayName = "Holy Pillar",
-    Targeting = SkillTargeting.Cell, RangeMin = 1, RangeMax = 3,
-    Power = 6, Element = ElementId.Holy, ApCost = 1, CooldownTurns = 2,
-    RequiresLineOfSight = true, IsClashSkill = false,
-    Behaviour = myBehaviour   // null → damage đơn mục tiêu
-};
-skills.Add(skill);
+```
+power = basePower × elementMultiplier            // hệ của đòn × hệ mục tiêu
+nếu !ignoresArmor: power -= armor                 // giáp trừ SAU hệ
+power = max(1, power)
+power = power × statusMultiplier                  // Stagger 2, Flanked 1.5, Guard 0.2 (nhân dồn)
+final = max(1, round(power))
 ```
 
-`ISkillBehaviour.BuildEffects(ctx)` — nơi duy nhất mô tả hình dạng chiêu:
+`Apply`:
+1. `Compute` → `FinalDamage`.
+2. `target.SetHp(Hp - damage)` (clamp ≥ 0).
+3. `target.Statuses.NotifyDamaged(ctx, result)` (Flanked tự xoá).
+4. phát `DamageDealtEvent(source, target, damage, element, wasStaggered, wasGuarded, wasFlanked, killed, at)`.
+5. nếu HP = 0 → `Units.Kill(target)` → `UnitDiedEvent` (đúng 1 lần).
+
+### 7.3 Skill
 
 ```csharp
-class HolyPillarBehaviour : ISkillBehaviour {
+enum SkillTargeting { Self, Unit, Cell }
+
+class SkillDefinition {
+  string Id, DisplayName; SkillTargeting Targeting;
+  int RangeMin = 1, RangeMax = 1, Power, ApCost = 1, CooldownTurns, AreaRadius;
+  ElementId Element; bool RequiresLineOfSight, IsClashSkill;
+  ISkillBehaviour Behaviour; MoveProfile MoveAfterUse;
+}
+
+interface ISkillBehaviour { void BuildEffects(EffectContext ctx); }
+
+interface ISkillLibrary { IReadOnlyList<SkillDefinition> All; bool TryGet(id, out skill); SkillDefinition Get(id); }
+class SkillLibrary : ISkillLibrary { Add(skill); ... }   // Get ném KeyNotFoundException
+```
+
+Cách viết skill mới (Content):
+
+```csharp
+public sealed class HolyPillarBehaviour : ISkillBehaviour {
     public void BuildEffects(EffectContext ctx) {
-        var cells = GridShapes.Cross(ctx.TargetCell, 1);      // 3 ô chữ thập
-        foreach (var unit in ctx.Units.UnitsIn(cells))        // quân trong vùng
-            ctx.Queue.Enqueue(new DamageEffect(unit.Id, ctx.Power,
-                                              ElementId.Holy, isSkill: true));
+        // Cross 3 ô quanh ô đích: 6 damage Holy, +50% vs quỷ/hắc ám do ElementMatrix lo
+        foreach (var cell in GridShapes.Cross(ctx.TargetCell, 1)) {
+            if (!ctx.State.Grid.InBounds(cell)) continue;
+            ctx.Queue.Enqueue(new SpawnTerrainEffect(cell, TerrainId.Poison, TerrainFlags.IsHazard, 1, 2, 0));
+        }
+        ctx.Queue.Enqueue(new DamageEffect(ctx.Target, 6, ElementId.Holy, isSkill: true));
     }
 }
 ```
 
-`ctx.Queue` cùng `ctx.Power/ctx.Element` giúp tái sử dụng. Lưu ý: `DamageEffect(UnitId.None, ...)` chỉ đánh vào **ctx.Target** (một mục tiêu), không phải toàn vùng — muốn AoE phải lặp `ctx.Units.UnitsIn(cells)`.
+- `DamageEffect(UnitId.None, power, element, true)` **không phải AoE** — nó rơi về `ctx.Target`. Muốn AoE, lặp `ctx.Units.UnitsIn(cells)` và enqueue từng `DamageEffect` cho từng unit.
+- Effect chạy theo `Priority` tăng dần: damage 10 → heal 12 → status 20/21 → push 30 → teleport 35 → terrain 40/41 → lock 45 → shake 90.
 
-### Clash — `Combat/Clash*.cs`
-- `ClashRuleTable`: `Add(rule)` theo cặp chiêu, `AddElement(a,b,bonus)` theo cặp hệ, mặc định **+3**.
-- `ClashDefinition`: `BossSkillId, BossPower, BossElement, Rules, WinEffect, LoseEffect` (`Func<IStatusEffect>`).
-- `ClashResolver.Predict(...)` → `ClashPrediction(Result, PlayerPower, BossPower, Bonus)`; `Resolve(...)` → `ClashOutcome` + gắn status; `GetOptions(...)` → danh sách `ClashOption` cho UI.
-- Công thức: `EffectivePower = skill.Power + bonus`; `>` Win, `==` Draw, `<` Lose. Không RNG.
+### 7.4 Effect
 
-### Duel — `Combat/Duel*.cs`, `Combat/ClashDuel.cs` ⭐
-Phase 2 đấu chiêu 1v1, **không còn bàn cờ/AP/End Turn**.
+| Effect | Priority | Hành vi |
+|--------|----------|---------|
+| `DamageEffect(target, power, element, isSkill, ignoresArmor)` | 10 | `Damage.Apply`; `power ≤ 0` → dùng `ctx.Power` |
+| `HealEffect(target, amount)` | 12 | hồi HP, clamp `MaxHp` (không hồi unit chết) |
+| `ApplyStatusEffect(target, effect)` | 20 | `Statuses.Add(effect, ctx)` (refresh cùng Id) |
+| `RemoveStatusEffect(target, statusId)` | 21 | `Statuses.Remove` |
+| `PushEffect(target, direction, distance)` | 30 | đẩy từng ô, dừng khi bị chặn; phát `UnitMovedEvent(cost 0)` |
+| `TeleportEffect(target, destination)` | 35 | `CanPlace(..., ignore: self)` rồi `MoveTo` |
+| `SpawnTerrainEffect(cell, terrain, flags, movementCost, hazard, collapseInTurns)` | 40 | `SetTerrain` (+ `ArmCollapse` nếu > 0) |
+| `ArmCollapseEffect(cell, turns)` | 41 | `ArmCollapse` |
+| `LockArenaEffect(cells)` | 45 | `Grid.LockArea` |
+| `CameraShakeEffect(strength, duration)` | 90 | phát `CameraShakeHintEvent` |
 
-- `DuelDefinition`: `Id, BackgroundId, MusicId, TransitionId, BossSkillIds, PlayerSkillIds, RoundLimit, DrawChipRatio (0.10), FinisherCount, Rules, WinEffect, LoseEffect`.
-- `DuelState`: `Round, BossSkillIndex, BossSkillId, BossPower, BossElement, AwaitingFinisher, FinishersRemaining, LastResult, IsOver, Winner, SeenBossSkills`.
-- `ClashMath.EffectivePower(skill, bonus)`; `Compare(playerPower, bossPower)`.
-- `IClashDuel` / `ClashDuel`:
-  - `Start(state, definition, player, boss)` — clear status 2 bên, publish `ClashStartedEvent`, vào vòng 1.
-  - `GetOptions()` → 3 `ClashOption` kèm `ClashPrediction`.
-  - `Choose(skillId)` → `ClashRoundResult`:
-    - Win: gắn `WinEffect` lên boss + `AwaitingFinisher = true` (1 đòn kết liễu).
-    - Draw: mỗi bên mất `round(power × 0.10)`.
-    - Lose: player ăn đúng `BossPower` + `LoseEffect`.
-  - `TryFinisher(out DamageResult)` — đánh thường của player lên boss (Stagger ×2), hết finisher thì sang vòng mới.
-- Kích hoạt: `GameSession` tự gọi `TryEnterDuel` sau mỗi lệnh thành công khi `boss.HpRatio < rules.Phase2Threshold`; `EnterDuel()` public để test/UI ép thủ công.
-- `TurnPhase.Duel`: `EndTurn` trả `ActionError.WrongPhase`; validator chỉ nhận `ClashSkill` (khi chưa `AwaitingFinisher`) và `Attack` (khi `AwaitingFinisher`).
-- `DuelSnapshot` nằm trong `GameSnapshot.Duel` nên rewind giữa Duel hoạt động; `DuelRoundStartedEvent(round, bossSkillId, bossPower)`, `DuelEndedEvent(lastResult, winner)`.
+`EffectQueue.Run(ctx)`:
 
----
+- sắp xếp **stable** theo `Priority`;
+- nếu `ctx.Source` chết giữa chừng → **dừng**;
+- phát event ngay sau mỗi effect (trong effect), không gom cuối;
+- `Clear()` khi bắt đầu một đợt mới.
 
-## 8. Ai — trí tuệ địch
-
-### `EnemyIntent` — `Ai/EnemyIntent.cs`
-Bất biến sau khi công bố: `Unit, SkillId, TargetCell, DangerCells, Effects, Priority`, `IsEmpty`, `Empty(unit)`.
-
-### `IEnemyBrain` ⭐ — `Ai/IEnemyBrain.cs`
+`EffectContext`:
 
 ```csharp
-public interface IEnemyBrain {
-    string Id { get; }
-    EnemyIntent Plan(UnitState self, GameState state);  // phải THUẦN + tất định
+GameState State; EffectQueue Queue; IUnitRegistry Units; IEventBus Events; IRandomSource Random;
+UnitId Source; GridCoord Origin; UnitId Target; GridCoord TargetCell;
+SkillDefinition Skill; int Power; ElementId Element;
+UnitState TargetUnit; GridCoord ResolvedCell;
+UnitState UnitAt(GridCoord cell);
+```
+
+### 7.5 Status
+
+```csharp
+struct StatusId { string Value; static None; ==, !=, IsEmpty }
+static class StatusIds { Stagger, Flanked, Root, Poison, Guard }
+
+interface IStatusEffect {
+  StatusId Id; int Duration; float DamageTakenMultiplier;
+  bool PreventsAction, PreventsMovement;
+  void OnApply(StatusContext ctx); void OnTurnStart(StatusContext ctx);
+  void OnTurnEnd(StatusContext ctx); void OnRemoved(StatusContext ctx);
+  void OnDamaged(StatusContext ctx, DamageResult result);
+}
+class StatusContext { UnitState Owner; IEventBus Events; IUnitRegistry Units; }
+
+class StatusSet {
+  bool Has(StatusId); bool Has<T>(); IStatusEffect Get(StatusId); int GetRemaining(StatusId);
+  void Add(IStatusEffect effect, StatusContext ctx); bool Remove(StatusId); void Clear();
+  void TickTurnStart(StatusContext); void TickTurnEnd(StatusContext);
+  void NotifyDamaged(StatusContext, DamageResult);
+  int Count; IEnumerable<IStatusEffect> Effects;
+  float DamageTakenMultiplier; bool PreventsAction, PreventsMovement;
+  bool IsStaggered, IsRooted, IsGuarding, IsFlanked;
 }
 ```
 
-Đăng ký: `brains.Register(new MeleeRusherBrain())`, rồi gán `UnitDefinition.BrainId = "melee"`.
+| Status | Duration | Hệ số | Tác dụng |
+|--------|----------|-------|----------|
+| `StaggerStatus` | 1 | ×2 damage nhận | chặn action + move |
+| `FlankedStatus` | 2 | ×1.5 | `OnDamaged` tự xoá sau đòn đầu |
+| `RootStatus` | 1 | 1 | chặn move |
+| `PoisonStatus(damagePerTurn, duration)` | N | 1 | `OnTurnEnd` trừ HP trực tiếp, phát `DamageDealtEvent` Necrotic; chết → `Units.Kill` |
+| `GuardStatus` | 1 | ×0.2 | giảm 80% damage |
 
-### `TelegraphService` — `Ai/TelegraphService.cs`
-`Declare(intent)`, `Clear()`, `All`, `DangerCells` (hợp nhất, sort Y rồi X), `TryGet(unit, out intent)`.
-`Declare` phát `IntentDeclaredEvent`; `Clear` phát `TelegraphClearedEvent`.
-
-### `BossPhaseController` — `Ai/BossPhaseController.cs`
-`ShouldEnterPhase2(hp, maxHp)` theo ngưỡng `Rules.Phase2Threshold` (0.7); `EnterPhase2(state)` → phase 2, khoá sân (nếu có cells), phát `BossPhaseChangedEvent`. Chỉ 1 lần.
+**Đếm duration:** status mới gắn có `CanTick = false`; `TickTurnStart` bật `CanTick = true`; `TickTurnEnd` chỉ giảm/`OnTurnEnd` khi `CanTick`. Nhờ vậy status gắn giữa lượt (Stagger sau Clash/Duel) không hết ngay cuối lượt đó mà sống sang lượt kế.
 
 ---
 
-## 9. Run — vòng chơi
-
-### `GameRules` ⭐ — `Run/GameRules.cs`
-
-| Thuộc tính | Mặc định |
-|---|---|
-| `ApPerTurn` | 2 |
-| `MovePoints` | 2 |
-| `TurnLimit` | 25 |
-| `Phase2Threshold` | 0.7 |
-| `GuardMultiplier` | 0.2 |
-| `StaggerMultiplier` | 2.0 |
-| `FlankMultiplier` | 1.5 |
-| `PoisonPerTurn` | 3 |
-
-Đây là chỗ duy nhất chứa số cân bằng. Đừng hard-code trong luật.
-
-### `XorShiftRandom` — `Run/XorShiftRandom.cs`
-`IRandomSource`: `State` (get/set, dùng cho snapshot), `NextInt(min, maxExclusive)`, `NextFloat()`. Seed 0 tự đổi thành hằng khác 0.
-
-### `GameState` ⭐ — `Run/GameState.cs`
-"Túi đồ" của một ván: `Grid, Units, Pathfinder, Turn, Rules, Events, Random, Skills, Damage, Telegraph, Clash, BossPhase, Snapshots, Knowledge, Stage, Result, IsOver`.
-
-### `StageDefinition` ⭐ / `UnitSpawnDefinition` / `TerrainOverride`
+## 8. Clash pha 1 — trên bàn cờ
 
 ```csharp
-var stage = new StageDefinition {
-    Id = "ai-1", DisplayName = "Oakhaven",
-    Width = 8, Height = 8,
-    Player = heroDefinition, PlayerSpawn = new GridCoord(0, 0),
-    TurnLimit = 25, BossId = bossDefinition.Id,
-    Clash = clashDefinition
-};
-stage.Spawns.Add(new UnitSpawnDefinition(bossDefinition, new GridCoord(6, 6)));
-stage.Terrains.Add(new TerrainOverride(new GridCoord(2, 2), TerrainId.Wall,
-                                       TerrainFlags.BlocksMove | TerrainFlags.BlocksLineOfSight));
+struct ClashRule { string PlayerSkillId, BossSkillId; int Bonus; }
+class ClashRuleTable {
+  int DefaultBonus = 3;
+  void Add(ClashRule rule);
+  void AddElement(ElementId playerElement, ElementId bossElement, int bonus);
+  int GetBonus(string playerSkillId, string bossSkillId, ElementId playerElement, ElementId bossElement);
+}
+class ClashDefinition {
+  string BossSkillId; int BossPower; ElementId BossElement;
+  ClashRuleTable Rules; Func<IStatusEffect> WinEffect, LoseEffect;
+  IStatusEffect CreateWinEffect(); IStatusEffect CreateLoseEffect();
+}
+enum ClashResult { None, Win, Draw, Lose }
+struct ClashPrediction { ClashResult Result; int PlayerPower, BossPower, Bonus; }
+class ClashOutcome { ClashResult Result; int PlayerPower, BossPower; IStatusEffect AppliedEffect; bool AppliedToBoss; }
+class ClashOption { string SkillId, DisplayName; int Power; ClashPrediction Prediction; }
+
+interface IClashResolver {
+  ClashPrediction Predict(UnitState player, UnitState boss, SkillDefinition playerSkill, ClashDefinition clash);
+  ClashOutcome Resolve(UnitState player, UnitState boss, SkillDefinition playerSkill, ClashDefinition clash);
+  IReadOnlyList<ClashOption> GetOptions(UnitState player, UnitState boss,
+      IReadOnlyList<string> skillIds, ISkillLibrary skills, ClashDefinition clash);
+}
+class ClashResolver : IClashResolver { int EffectivePower(SkillDefinition, int bonus); }
+
+static class ClashMath {
+  int EffectivePower(SkillDefinition skill, int bonus);   // skill.Power + bonus
+  ClashResult Compare(int playerPower, int bossPower);    // > Win, == Draw, < Lose
+}
 ```
 
-`Spawns`/`Terrains` là list chỉ-đọc-tham-chiếu: **Add vào list**, không gán mới.
-`TerrainOverride` là struct readonly → dùng constructor positional (như trên), không object initializer.
+- Bonus lấy theo thứ tự: **cặp (playerSkillId, bossSkillId)** → **cặp element** → `DefaultBonus = 3`.
+- `Predict` và `Resolve` dùng chung `EffectivePower`; không RNG → dự báo luôn khớp.
+- `Resolve`: Win → `WinEffect` lên boss (`AppliedToBoss = true`); Lose → `LoseEffect` lên player; Draw → không gắn.
+- `GetOptions` chỉ lấy skill `IsClashSkill` trong danh sách truyền vào.
+- Luồng pha 1: chỉ khi `TurnPhase.Clash` (do `TurnManager.BeginClash` hoặc test gọi) mới nhận `ActionRequest.ClashSkill`.
 
-### `ObjectiveEvaluator` ⭐ — `Run/ObjectiveEvaluator.cs`
-`Evaluate(state, stage)` theo thứ tự: đã có kết quả → trả luôn; player chết → `DefeatPlayerDead`; boss chết → `Victory`; quá `TurnLimit` → `DefeatTurnLimit`; ngược lại `None`.
+---
 
-### `GameSession` ⭐ — `Run/GameSession.cs`
-Composition root: lắp ráp toàn bộ service, chạy nhịp lượt.
+## 9. Duel pha 2 ⭐
 
 ```csharp
-var session = new GameSession();           // seed mặc định 20260101
-session.RegisterStage(stage);
-session.StartStage("ai-1");
+class DuelDefinition {
+  string Id, BackgroundId, MusicId, TransitionId;
+  List<string> BossSkillIds = new();     // chu kỳ chiêu boss
+  List<string> PlayerSkillIds = new();   // chiêu Clash người chơi được chọn
+  int RoundLimit;                        // 0 = không giới hạn
+  float DrawChipRatio = 0.10f;           // mỗi bên mất 10% power khi Draw
+  int FinisherCount = 1;                 // số đòn finisher sau Win
+  ClashRuleTable Rules = new();
+  Func<IStatusEffect> WinEffect = () => new StaggerStatus();
+  Func<IStatusEffect> LoseEffect;        // null = không gắn
+  IStatusEffect CreateWinEffect(); IStatusEffect CreateLoseEffect();
+}
 
-session.State;        // GameState
-session.Events;       // IEventBus (null trước StartStage)
-session.Skills; session.Brains; session.Knowledge;
+class DuelState {
+  string DuelId; int Round, BossSkillIndex; string BossSkillId;
+  int BossPower; ElementId BossElement;
+  bool AwaitingFinisher; int FinishersRemaining;
+  ClashResult LastResult; bool IsOver; UnitId Winner;
+  IReadOnlyList<string> SeenBossSkills;
+}
 
-ActionResult r = session.TryExecute(ActionRequest.Attack(heroId, targetCell));
-ActionResult r2 = session.EndTurn();     // chạy đủ Enemy phase rồi sang lượt mới
-session.Restart();                        // chơi lại màn hiện tại: RNG về seed, RunKnowledge mới
-session.Reset();                          // alias của Restart
+struct ClashRoundResult {
+  ClashResult Result; int PlayerPower, BossPower, DamageToPlayer, DamageToBoss;
+  IStatusEffect Applied;
+}
+
+interface IClashDuel {
+  DuelState State; DuelDefinition Definition; bool IsActive;
+  void Start(GameState state, DuelDefinition definition, UnitState player, UnitState boss);
+  IReadOnlyList<ClashOption> GetOptions();
+  ClashRoundResult Choose(string playerSkillId);
+  bool TryFinisher(out DamageResult damage);
+  DuelSnapshot Capture(); void Restore(DuelSnapshot snapshot); void Clear();
+}
+class ClashDuel : IClashDuel { ClashDuel(GameState state); }
 ```
 
-`TryExecute` chỉ chạy executor + kiểm tra phase 2 boss; **không chạy AI**. `EndTurn()` mới chạy `BeginEnemyPhase → RunEnemyBrains → EndEnemyPhase → Turn.EndTurn → plan telegraph → BeginPlayerPhase`.
+### 9.1 Cách Duel được kích hoạt
 
-Thứ tự dựng trong `StartStage`: EventBus → GridMap → UnitRegistry → GameState → Pathfinder/Damage/Telegraph/Clash/BossPhase/Knowledge/Turn/Snapshots → apply terrain → spawn unit → `StartStage` (turn) → checkpoint StageStart → plan telegraph → player phase.
+`GameSession`:
 
-### Snapshot — `Run/GameSnapshot.cs`, `Run/SnapshotService.cs`, `Run/SnapshotStore.cs`
+- `TryExecute` thành công → `TryEnterDuel()`: yêu cầu `Stage.Duel != null`, boss sống, `Phase != Duel`, `boss.HpRatio < Rules.Phase2Threshold` (mặc định 0.70).
+- Có thể gọi thẳng `GameSession.EnterDuel()` (test/debug).
+
+`EnterDuel()`:
+
+1. `Telegraph.Clear()`.
+2. `BossPhase.EnterPhase2(State)` (đánh dấu Phase 2 + `BossPhaseChangedEvent`).
+3. `Duel.Start(state, stage.Duel, player, boss)`:
+   - clear status 2 bên;
+   - phát `ClashStartedEvent(boss, bossSkillId đầu)`;
+   - `EnterRound(1)`.
+4. `Turn.BeginDuel()` → `TurnPhase.Duel`.
+
+### 9.2 Một vòng
+
+```
+EnterRound(n):
+  Round = n
+  BossSkillIndex = (n-1) % BossSkillIds.Count
+  BossSkillId, BossPower, BossElement lấy từ SkillLibrary
+  SeenBossSkills.Add(id); Knowledge.MarkSeen("boss-skill:" + id)
+  phát DuelRoundStartedEvent(round, bossSkillId, bossPower)
+
+Choose(playerSkillId):
+  power = ClashMath.EffectivePower(skill, bonus từ Rules)
+  so với BossPower:
+    Win  → boss.Statuses.Add(WinEffect) ; AwaitingFinisher = true;
+           FinishersRemaining = max(1, FinisherCount)
+    Draw → chip = round(power × DrawChipRatio) ; Damage.Apply cả 2 bên (ignoresArmor, element None)
+    Lose → Damage.Apply(player, BossPower) ; nếu LoseEffect != null → gắn cho player
+  phát ClashResolvedEvent
+  CheckDeaths (player chết ưu tiên trước) → nếu chết: End(...)
+  nếu chưa kết thúc → EnterRound(n+1)
+
+TryFinisher(out damage):
+  yêu cầu AwaitingFinisher && boss sống
+  lặp FinishersRemaining: Damage.Apply(player → boss, player.Definition.Attack, NativeElement,
+                                        isSkill: false, ignoresArmor: false)   // giáp vẫn áp dụng
+  hết finisher → AwaitingFinisher = false → EnterRound(kế)
+```
+
+### 9.3 Kết thúc
+
+- Boss chết → `Duel.End(ClashResult.Win, winner: player)` → `DuelEndedEvent` → `ObjectiveEvaluator` → `Victory` → `FinishStage` → `StageEndedEvent`.
+- Player chết → `DefeatPlayerDead`.
+- `RoundLimit > 0` và vượt → `End(None, Draw)`; UI tự quyết định ý nghĩa hoà (hiện chưa dùng mặc định).
+
+### 9.4 Snapshot
+
+`DuelSnapshot` lưu: `DuelId, Round, BossSkillIndex, BossSkillId, BossPower, BossElement, AwaitingFinisher, FinishersRemaining, LastResult, IsOver, Winner, SeenBossSkills`.
+`GameSnapshot.Duel` có thể `null` (chưa vào Duel); `SnapshotService.Capture/Restore` truyền và khôi phục nó. `GameSnapshot.ContentEquals` so cả Duel.
+
+---
+
+## 10. AI & Telegraph
 
 ```csharp
-state.Snapshots.CanRewind;
-GameSnapshot snap = state.Snapshots.Capture();
-state.Snapshots.Restore(snap);
-state.Snapshots.PushCheckpoint(SnapshotTrigger.TurnStart);
-state.Snapshots.Rewind();          // về checkpoint gần nhất + RewindPerformedEvent
+class EnemyIntent {
+  UnitId Unit; string SkillId; GridCoord TargetCell;
+  IReadOnlyList<GridCoord> DangerCells; IReadOnlyList<IGameEffect> Effects; int Priority;
+  bool IsEmpty; static Empty(UnitId);
+}
+
+interface IEnemyBrain { string Id; EnemyIntent Plan(UnitState self, GameState state); }
+
+interface ITelegraphService {
+  IReadOnlyCollection<EnemyIntent> All;
+  IReadOnlyList<GridCoord> DangerCells;          // hợp nhất, sort Y rồi X
+  bool TryGet(UnitId, out EnemyIntent);
+  void Declare(EnemyIntent); void Clear();
+}
+
+interface IEnemyBrainLibrary { IReadOnlyList<IEnemyBrain> All; void Register(IEnemyBrain); bool TryGet(id, out brain); IEnemyBrain Get(id); }
+
+interface IBossPhaseController {
+  int Phase; bool ShouldEnterPhase2(int hp, int maxHp); void EnterPhase2(GameState state);
+}
+class BossPhaseController : IBossPhaseController {
+  BossPhaseController(IGameRules rules, Func<GameState, IReadOnlyList<GridCoord>> arenaCells = null);
+}
 ```
 
-`GameSnapshot` chứa: turn, phase, result, RNG state, cells, locked cells, units (HP/AP/flags/status/cooldown), intents. `ContentEquals` so từng trường (dùng cho test).
-`SnapshotStore` giữ tối đa 8 ảnh gần nhất (ring buffer), không ghi đĩa.
-Restore đúng thứ tự: RNG → lưới → registry → từng unit → telegraph → result → turn.
+- `Plan` phải **thuần + tất định**: cùng state → cùng intent (đã test 4 case).
+- `EnemyIntent` là **bất biến sau khi công bố**; pha Enemy chỉ resolve đúng intent.
+- `GameSession.PlanEnemyIntents()` duyệt `Units.Alive(Enemy)`, lấy brain theo `Definition.BrainId`, gọi `Plan` và `Declare`. Brain không tìm thấy → bỏ qua (an toàn).
+- `BossPhaseController.EnterPhase2` set `Phase = 2`, khoá `arenaCells` nếu có, phát `BossPhaseChangedEvent(bossId, 2)`; hiện Duel dùng nó như bước đánh dấu.
 
-### `RunKnowledge` — `Run/RunKnowledge.cs`
-Bộ nhớ **sống ngoài snapshot** (rewind không xoá): `MarkSeen`, `HasSeen`, `Increment`, `GetCounter`, `Deaths`, `RegisterDeath`. Hằng: `DeathsKey = "deaths"`, `BossSkillSeenPrefix = "boss-skill:"`.
+---
 
-### Dialogue — `Run/Dialogue*.cs`
-`DialogueNode` (Id, Speaker, Text, NextId, Choices, Ending), `DialogueChoice` (Text, NextId, Condition, HideWhenFalse), `DialogueGraph` (Add, TryGet, Get, Validate), `DialogueRunner` (Start, Advance, Choose, Current, IsFinished, Ending). Lựa chọn có điều kiện dựa trên `IRunKnowledge`.
+## 11. Run — state, session, snapshot, story
 
-### `EventBus` ⭐ — `Run/EventBus.cs`
+### 11.1 Rules & RNG
 
 ```csharp
-using var sub = session.Events.Subscribe<DamageDealtEvent>(
-    (in DamageDealtEvent e) => Debug.Log(e.Amount));
-session.Events.Publish(new CameraShakeHintEvent(0.3f, 0.2f));
+interface IGameRules {
+  int ApPerTurn, MovePoints, TurnLimit;
+  float Phase2Threshold, GuardMultiplier, StaggerMultiplier, FlankMultiplier;
+  int PoisonPerTurn;
+}
+class GameRules : IGameRules   // mặc định 2, 2, 25, 0.7, 0.2, 2, 1.5, 3
+
+interface IRandomSource { uint State { get; set; } int NextInt(min, max); float NextFloat(); }
+class XorShiftRandom : IRandomSource { XorShiftRandom(int seed); uint NextUInt(); }
 ```
 
-`delegate void RefEventHandler<T>(in T) where T : struct` → không boxing. Publish duyệt bản sao subscriber, nên tự huỷ trong handler an toàn.
-**Quy tắc:** state đổi xong mới publish; không sửa state trong handler.
+- Seed 0 được thay bằng `0x9E3779B9` để tránh trạng thái xấu.
+- Core **không** dùng `UnityEngine.Random`; mọi random gameplay đi qua `IRandomSource` và được snapshot.
 
-#### 26 event
+### 11.2 Stage
 
-| Event | Phát khi | Trường |
-|---|---|---|
-| `StageStartedEvent` | màn bắt đầu | StageId, TurnLimit |
-| `TurnPhaseStartedEvent` | vào phase | Phase, TurnIndex |
-| `TurnAdvancedEvent` | sang lượt | TurnIndex |
-| `UnitSpawnedEvent` | đặt quân | Unit, Position |
-| `UnitMovedEvent` | di chuyển/đẩy | Unit, From, To, Cost |
-| `UnitActedEvent` | hành động xong | Unit, Kind, Target |
-| `ApChangedEvent` | AP đổi | Unit, ActionPoints |
-| `DamageDealtEvent` | gây damage | Source, Target, Amount, Element, WasStaggered, WasGuarded, WasFlanked, Killed, At |
-| `UnitDiedEvent` | chết | Unit, At |
-| `StatusAppliedEvent` | gắn status | Unit, Status, Duration |
-| `StatusExpiredEvent` | hết status | Unit, Status |
-| `SkillUsedEvent` | dùng chiêu | Unit, SkillId, Target |
-| `IntentDeclaredEvent` | công bố ý đồ | Intent |
-| `TelegraphClearedEvent` | xoá telegraph | Count |
-| `CellChangedEvent` | ô đổi | Coord, Terrain, Flags, HazardDamagePerTurn |
-| `CellCollapsedEvent` | ô sập | Coord |
-| `HazardTriggeredEvent` | dính hazard | Coord, Unit, Damage |
-| `ArenaLockedEvent` | khoá sân | CellCount |
-| `BossPhaseChangedEvent` | boss sang phase | Boss, Phase |
-| `ClashStartedEvent` | bắt đầu đọ chiêu | Boss, BossSkillId |
-| `ClashResolvedEvent` | xong đọ chiêu | Boss, PlayerSkillId, Result, PlayerPower, BossPower |
-| `StageEndedEvent` | màn kết thúc | Result, TurnIndex |
-| `SnapshotPushedEvent` | tạo checkpoint | Trigger, TurnIndex |
-| `RewindPerformedEvent` | tua lại | Trigger, TurnIndex |
-| `RunKnowledgeUpdatedEvent` | ký ức run đổi | Key, Value |
-| `CameraShakeHintEvent` | gợi ý rung camera | Strength, Duration |
+```csharp
+class StageDefinition {
+  string Id, DisplayName;
+  int Width = 8, Height = 8, TurnLimit = 25;
+  UnitDefinition Player; GridCoord PlayerSpawn;
+  List<UnitSpawnDefinition> Spawns = new();
+  List<TerrainOverride> Terrains = new();
+  string BossId;
+  ClashDefinition Clash;   // pha 1
+  DuelDefinition Duel;     // pha 2
+}
+class UnitSpawnDefinition { UnitDefinition Definition; GridCoord Anchor; }
+struct TerrainOverride { GridCoord Coord; TerrainId Terrain; TerrainFlags Flags;
+                         int MovementCost, HazardDamagePerTurn, CollapseInTurns; }
+```
+
+`GameSession.Build` áp `Terrains` bằng `SetTerrain`, và `ArmCollapse` nếu `CollapseInTurns > 0`; spawn `Player` + từng `Spawns`.
+
+### 11.3 `GameState`
+
+```csharp
+GameState(IGridMap grid, IUnitRegistry units, IGameRules rules, IEventBus events, IRandomSource random)
+
+IGridMap Grid; IUnitRegistry Units; IPathfinder Pathfinder; ITurnManager Turn;
+IGameRules Rules; IEventBus Events; IRandomSource Random; ISkillLibrary Skills;
+IDamageCalculator Damage; ITelegraphService Telegraph; IClashResolver Clash;
+IClashDuel Duel; IBossPhaseController BossPhase; ISnapshotService Snapshots;
+IRunKnowledge Knowledge; StageDefinition Stage; StageResult Result;
+bool IsOver => Result != None;
+```
+
+Đây là "service locator" được truyền tường minh; Core dùng nó để tránh singleton. Validator/effect/brain nhận `GameState` qua tham số.
+
+### 11.4 `GameSession` — façade duy nhất cho Unity
+
+```csharp
+class GameSession {
+  GameSession(IGameRules rules = null, ISkillLibrary skills = null,
+              IEnemyBrainLibrary brains = null, IClashResolver clash = null,
+              IRandomSource random = null, ElementMatrix elements = null,
+              IObjectiveEvaluator objective = null, IInitiativePolicy initiative = null,
+              int snapshotCapacity = 8, int seed = 20260101);
+
+  GameState State; IEventBus Events; ISkillLibrary Skills;
+  IEnemyBrainLibrary Brains; IRunKnowledge Knowledge;
+
+  void RegisterStage(StageDefinition stage);
+  void StartStage(string stageId); void StartStage(StageDefinition stage);
+  ActionResult TryExecute(ActionRequest request);
+  ActionResult EndTurn();
+  void BeginPlayerPhase();
+  void EnterDuel();
+  void Restart();   // chơi lại state.Stage, reset RNG về seed, RunKnowledge mới
+  void Reset();     // alias Restart
+}
+```
+
+`Build(stage)` thứ tự:
+
+```
+EventBus → GridMap(width, height, events) → UnitRegistry → GameState
+→ Stage/Result/Skills/Pathfinder/Damage/Telegraph/Clash/Duel/BossPhase/Knowledge
+→ TurnManager → SnapshotService(store capacity)
+→ ApplyTerrains → SpawnUnits
+→ ActionValidator(pathfinder) + GameActionExecutor(objective)
+→ Turn.StartStage(stage) → PushCheckpoint(StageStart)
+→ PlanEnemyIntents → BeginPlayerPhase
+```
+
+`EndTurn()` (gameplay):
+
+```
+nếu IsOver hoặc Phase != Player → ActionResult.Fail(WrongPhase)
+BeginEnemyPhase → RunEnemyBrains → (nếu state over → return)
+→ EndEnemyPhase → Turn.EndTurn() → PlanEnemyIntents → BeginPlayerPhase
+```
+
+`TryExecute(request)`:
+
+```
+if State/Turn null → Fail(WrongPhase)
+result = _executor.Execute(request, State)
+if result.Success → TryEnterDuel()
+return result
+```
+
+### 11.5 Snapshot
+
+```csharp
+class GameSnapshot {
+  int TurnIndex; TurnPhase Phase; StageResult Result; uint RandomState;
+  CellState[] Cells; IReadOnlyList<GridCoord> LockedCells; UnitSnapshot[] Units;
+  IReadOnlyList<EnemyIntent> Intents; DuelSnapshot Duel;
+  bool ContentEquals(GameSnapshot other);
+}
+class UnitSnapshot { UnitId Id; UnitDefinition Definition; GridCoord Position; int Hp, ActionPoints;
+                     bool HasMovedThisTurn, HasActedThisTurn;
+                     IReadOnlyList<StatusSnapshot> Statuses; IReadOnlyDictionary<string,int> Cooldowns; }
+struct StatusSnapshot { IStatusEffect Effect; int Remaining; bool CanTick; }
+class DuelSnapshot { ...; bool ContentEquals(DuelSnapshot other); }
+
+interface ISnapshotStore { int Capacity, Count; IReadOnlyList<GameSnapshot> All;
+                           void Push(GameSnapshot); bool TryGetLatest(out GameSnapshot); void Clear(); }
+class SnapshotStore : ISnapshotStore { SnapshotStore(int capacity = 8); }  // ring buffer
+
+enum SnapshotTrigger { StageStart, TurnStart, ClashStart }
+
+interface ISnapshotService {
+  bool CanRewind; GameSnapshot Capture(); void Restore(GameSnapshot);
+  void PushCheckpoint(SnapshotTrigger); void Rewind(); void ClearCheckpoints();
+}
+class SnapshotService : ISnapshotService { SnapshotService(GameState state, ISnapshotStore store = null); }
+```
+
+`Restore` thứ tự chính xác:
+
+1. `Random.State = snapshot.RandomState`
+2. `GridMap.RestoreCells(Cells, LockedCells)`
+3. `UnitRegistry.ClearSilently()` + `RestoreAdd(def, pos, id, hp, ap)` từng unit
+4. `SetHp`, `SetPosition`, `ActionPoints`, `HasMoved/Acted`, `RestoreCooldowns`, `Statuses.Restore`
+5. `Telegraph.RestoreSilently(Intents)`
+6. `Duel.Restore(Duel)` hoặc `Duel.Clear()` nếu null
+7. `Result = snapshot.Result`
+8. `TurnManager.RestoreState(TurnIndex, Phase)`
+
+`PushCheckpoint(trigger)` lưu snapshot + `SnapshotPushedEvent`; `Rewind()` lấy checkpoint gần nhất, `Restore`, phát `RewindPerformedEvent(trigger, TurnIndex)`.
+
+### 11.6 `RunKnowledge`
+
+```csharp
+interface IRunKnowledge {
+  int Deaths; IReadOnlyDictionary<string,int> Counters; IReadOnlyCollection<string> SeenKeys;
+  bool HasSeen(string key); void MarkSeen(string key);
+  int GetCounter(string key); void Increment(string key, int amount = 1);
+  void RegisterDeath();
+}
+class RunKnowledge : IRunKnowledge {
+  RunKnowledge(IEventBus events = null);
+  const string DeathsKey = "deaths"; const string BossSkillSeenPrefix = "boss-skill:";
+}
+```
+
+Nằm **ngoài** snapshot → rewind không xoá. Dùng cho codex/UI/thoại ("đã thấy chiêu boss", "số lần chết").
+
+### 11.7 Dialogue
+
+```csharp
+class DialogueNode {
+  string Id, Speaker, Text, NextId; IReadOnlyList<DialogueChoice> Choices; StageResult Ending;
+  DialogueNode AddChoice(string text, string nextId,
+                         Func<IRunKnowledge,bool> condition = null, bool hideWhenFalse = false);
+}
+class DialogueChoice { string Text, NextId; Func<IRunKnowledge,bool> Condition;
+                       bool HideWhenFalse; bool IsAvailable(IRunKnowledge); }
+class DialogueGraph { string StartId; IReadOnlyCollection<DialogueNode> Nodes;
+                      DialogueGraph(string startId); Add(node); TryGet; Get; List<string> Validate(); }
+class DialogueRunner { DialogueNode Current; bool IsFinished; StageResult Ending;
+                       DialogueRunner(DialogueGraph graph, IRunKnowledge knowledge);
+                       void Start(); void Advance(); void Choose(int index); }
+```
+
+- `Advance()` ném `InvalidOperationException` nếu node hiện tại có choice.
+- `Choose(index)` theo thứ tự lựa chọn **hiển thị** (đã lọc điều kiện/ẩn).
+- `Ending` đọc khi node có `Ending != None` trước khi chuyển node.
+
+### 11.8 Event bus
+
+```csharp
+delegate void RefEventHandler<T>(in T evt) where T : struct;
+
+interface IEventBus {
+  IDisposable Subscribe<T>(RefEventHandler<T> handler);
+  void Unsubscribe<T>(RefEventHandler<T> handler);
+  void Publish<T>(in T evt);
+  void Clear();
+}
+class EventBus : IEventBus
+```
+
+- Không boxing: dùng `in T` + `Dictionary<Type, object>` nội bộ.
+- Publish duyệt **bản sao** danh sách subscriber → subscribe/unsubscribe trong handler an toàn.
+- Subscribe trả `IDisposable` (dispose = unsubscribe).
 
 ---
 
-## 10. Ba luồng mẫu
+## 12. Danh sách 28 event
 
-### A. Một đòn đánh
+| # | Event | Trường | Ai phát |
+|---|-------|--------|---------|
+| 1 | `StageStartedEvent` | StageId, TurnLimit | `TurnManager.StartStage` |
+| 2 | `TurnPhaseStartedEvent` | Phase, TurnIndex | `TurnManager.SetPhase` |
+| 3 | `TurnAdvancedEvent` | TurnIndex | `TurnManager.EndTurn` |
+| 4 | `UnitSpawnedEvent` | Unit, Position | `UnitRegistry.Add` |
+| 5 | `UnitMovedEvent` | Unit, From, To, Cost | executor Move, `PushEffect` (cost 0) |
+| 6 | `UnitActedEvent` | Unit, Kind, Target | executor sau mỗi action |
+| 7 | `ApChangedEvent` | Unit, ActionPoints | `TurnManager.TrySpend` |
+| 8 | `DamageDealtEvent` | Source, Target, Amount, Element, WasStaggered, WasGuarded, WasFlanked, Killed, At | `DamageCalculator.Apply`, `PoisonStatus` |
+| 9 | `UnitDiedEvent` | Unit, At | `UnitRegistry.Kill` (đúng 1 lần) |
+| 10 | `StatusAppliedEvent` | Unit, Status, Duration | `StatusSet.Add` |
+| 11 | `StatusExpiredEvent` | Unit, Status | `StatusSet.TickTurnEnd` |
+| 12 | `SkillUsedEvent` | Unit, SkillId, Target | executor Skill / Duel clash |
+| 13 | `IntentDeclaredEvent` | Intent | `TelegraphService.Declare` |
+| 14 | `TelegraphClearedEvent` | Count | `TelegraphService.Clear` |
+| 15 | `CellChangedEvent` | Coord, Terrain, Flags, HazardDamagePerTurn | `GridMap.SetTerrain` |
+| 16 | `CellCollapsedEvent` | Coord | `GridMap.TickCollapse` |
+| 17 | `HazardTriggeredEvent` | Coord, Unit, Damage | `TurnManager.TickTerrain` |
+| 18 | `ArenaLockedEvent` | CellCount | `GridMap.LockArea` |
+| 19 | `BossPhaseChangedEvent` | Boss, Phase | `BossPhaseController.EnterPhase2` |
+| 20 | `ClashStartedEvent` | Boss, BossSkillId | `ClashDuel.Start` |
+| 21 | `ClashResolvedEvent` | Boss, PlayerSkillId, Result, PlayerPower, BossPower | `ClashResolver.Resolve`, `ClashDuel.Choose` |
+| 22 | `StageEndedEvent` | Result, TurnIndex | `TurnManager.FinishStage` |
+| 23 | `RewindPerformedEvent` | Trigger, TurnIndex | `SnapshotService.Rewind` |
+| 24 | `SnapshotPushedEvent` | Trigger, TurnIndex | `SnapshotService.PushCheckpoint` |
+| 25 | `RunKnowledgeUpdatedEvent` | Key, Value | `RunKnowledge` |
+| 26 | `CameraShakeHintEvent` | Strength, Duration | `CameraShakeEffect` |
+| 27 | `DuelRoundStartedEvent` | Round, BossSkillId, BossPower | `ClashDuel.EnterRound` |
+| 28 | `DuelEndedEvent` | LastResult, Winner | `ClashDuel.End` |
 
+**Quy ước UI:**
+
+```csharp
+IDisposable sub = session.Events.Subscribe<DamageDealtEvent>((in DamageDealtEvent e) => {
+    hud.SpawnDamageNumber(e.Target, e.Amount, e.Killed);
+});
+// ... khi destroy: sub.Dispose();
 ```
-ActionRequest.Attack(heroId, cell)
-  → ActionValidator.Validate          (thuần, trả lỗi nếu sai)
-  → GameActionExecutor.Execute
-      → TurnManager.TrySpend(1)      → ApChangedEvent
-      → queue.Enqueue(DamageEffect)
-      → queue.Run(ctx)
-          → DamageCalculator.Apply   → DamageDealtEvent
-          → nếu HP = 0 → UnitRegistry.Kill → UnitDiedEvent
-      → UnitActedEvent
-      → FinishIfOver → ObjectiveEvaluator → StageEndedEvent (nếu xong)
+
+Trong Unity, nhớ `Dispose` khi `OnDestroy`/đổi scene để tránh handler treo.
+
+---
+
+## 13. Ba luồng mẫu
+
+### 13.1 Đánh thường trên bàn cờ
+
+```csharp
+var session = new GameSession();
+session.RegisterStage(new StageDefinition {
+    Id = "stage-1", Width = 8, Height = 8,
+    Player = wanderer, PlayerSpawn = new GridCoord(0, 0),
+    Spawns = { new UnitSpawnDefinition(boss, new GridCoord(1, 0)) },
+    TurnLimit = 25
+});
+session.StartStage("stage-1");
+
+var result = session.TryExecute(ActionRequest.Attack(session.State.Units.Player.Id, new GridCoord(1, 0)));
+// result.Success, boss Hp giảm, các event DamageDealt/UnitActed phát ra
 ```
 
-### B. Một lượt đầy đủ
+### 13.2 Một vòng Duel
 
-```
-session.EndTurn()
-  → Turn.BeginEnemyPhase
-  → RunEnemyBrains (resolve intent đã công bố)
-  → Turn.EndEnemyPhase
-  → Turn.EndTurn: tick status → hazard → collapse → TurnIndex++
-                  → objective → checkpoint TurnStart → telegraph
-  → PlanEnemyIntents (công bố intent cho lượt kế)
-  → Turn.BeginPlayerPhase (AP = 2)
+```csharp
+// boss đang dưới 70% HP; TryExecute thành công sẽ tự vào Duel
+session.TryExecute(ActionRequest.Skill(heroId, "swift-slash", bossCell));
+
+if (session.State.Turn.Phase == TurnPhase.Duel) {
+    var options = session.State.Duel.GetOptions();     // 3 ClashOption + prediction
+    var option = options.First(o => o.Prediction.Result == ClashResult.Win);
+
+    var round = session.TryExecute(ActionRequest.ClashSkill(heroId, option.SkillId));
+    // Win → boss Stagger, AwaitingFinisher = true
+
+    if (session.State.Duel.State.AwaitingFinisher) {
+        session.TryExecute(ActionRequest.Attack(heroId, session.State.Units.Boss.Position));
+    }
+}
 ```
 
-### C. Rewind
+### 13.3 Snapshot & rewind
 
-```
-state.Snapshots.PushCheckpoint(SnapshotTrigger.TurnStart)   // tự động trong EndTurn
-...
-state.Snapshots.Rewind()
-  → Restore(checkpoint cuối)  → RewindPerformedEvent
+```csharp
+session.State.Snapshots.PushCheckpoint(SnapshotTrigger.TurnStart); // thường TurnManager tự đẩy
+// ... đánh nhau, chết
+if (session.State.Snapshots.CanRewind) {
+    session.State.Snapshots.Rewind();   // phát RewindPerformedEvent, khôi phục Duel/telegraph/RNG
+}
 ```
 
 ---
 
-## 11. Bảng hằng số & công thức
+## 14. Hằng số & công thức
 
-| Đại lượng | Giá trị |
-|---|---|
-| AP mỗi lượt | 2 (1 move + 1 action) |
-| Move mặc định | 2 ô, 4 hướng, không chéo |
-| Tầm đánh thường | 1 (Manhattan từ Center) |
-| Damage tối thiểu | 1 |
-| Guard | ×0.2 damage nhận |
-| Stagger | ×2 damage nhận, khoá 1 lượt |
-| Flanked | ×1.5 damage nhận |
-| Poison mặc định | 3 HP/lượt |
-| Boss phase 2 | HP ≤ 70% |
-| Clash mặc định | +3 power |
-| Checkpoint | ring 8, StageStart/TurnStart/ClashStart |
-
----
-
-## 12. Cách mở rộng (không sửa Core)
-
-**Thêm chiêu mới**
-1. Viết class `ISkillBehaviour` (dùng `ctx.Queue.Enqueue(...)`, `GridShapes.*`).
-2. Tạo `SkillDefinition` và `skills.Add(skill)`.
-3. Thêm id vào `UnitDefinition.SkillIds` / `ClashDefinition`.
-
-**Thêm AI mới**
-1. Viết class `IEnemyBrain` (Plan thuần, trả `EnemyIntent` với danger cells).
-2. `brains.Register(brain)`.
-3. Gán `UnitDefinition.BrainId`.
-
-**Thêm màn mới**
-1. Dựng `StageDefinition` (kích thước, spawn, terrain, turn limit, boss, clash).
-2. `session.RegisterStage(stage)` → `session.StartStage(stage.Id)`.
-
-**Thêm status mới**
-1. Viết class `IStatusEffect` (Id, Duration, hệ số, hook).
-2. Thêm `StatusId` vào `StatusIds`.
-3. Gắn qua `ApplyStatusEffect` hoặc `unit.Statuses.Add(...)`.
-
-**Thêm event mới**
-1. Tạo `readonly struct` trong `Run/`.
-2. `Publish(new XEvent(...))` ở nơi state đã ổn định.
-3. View `Subscribe<XEvent>(...)`. Không cần đăng ký trước.
-
-**Thêm test**
-1. Dùng `Assets/Tests/TestWorld.cs` (`Unit`, `Boss`, `State`, `Stage`).
-2. Thêm file `*Tests.cs` với `Assert.That`.
-3. Chạy lệnh ở mục 14.
+| Hạng mục | Giá trị | Nơi |
+|----------|---------|-----|
+| AP/lượt | 2 (1 Move + 1 Action) | `GameRules.ApPerTurn` |
+| Move | 2 ô, 4 hướng, không chéo | `MoveProfile` + `AStarPathfinder` |
+| Melee | Manhattan ≤ 1 (theo `Center`) | `ActionValidator` |
+| Ranged | 2–3, cần LOS | `SkillDefinition.RangeMin/Max` + `RequiresLineOfSight` |
+| Turn limit | 25 mặc định (20–25/thiết kế) | `GameRules.TurnLimit` / `StageDefinition.TurnLimit` |
+| Phase 2 | `HpRatio < 0.70` | `GameRules.Phase2Threshold` |
+| Stagger | 1 lượt, ×2 | `StaggerStatus` + `GameRules.StaggerMultiplier` |
+| Guard | ×0.2 | `GuardStatus` + `GameRules.GuardMultiplier` |
+| Flanked | ×1.5, tự xoá sau đòn | `FlankedStatus` + `GameRules.FlankMultiplier` |
+| Poison | 3 HP/lượt | `PoisonStatus` + `GameRules.PoisonPerTurn` |
+| Damage | `max(1, round(max(1, base×hệ−giáp) × status))` | `CombatMath` |
+| Clash bonus | cặp chiêu → cặp hệ → 3 | `ClashRuleTable` |
+| Duel Draw | 10% power mỗi bên | `DuelDefinition.DrawChipRatio` |
+| Duel finisher | 1 đòn ATK × status | `DuelDefinition.FinisherCount` + `ClashDuel.TryFinisher` |
+| Timeout snapshot | ring 8 | `SnapshotStore` |
 
 ---
 
-## 13. Mười lỗi thường gặp
+## 15. Cách mở rộng (không sửa Core)
 
-1. **`new UnitState(...)`** — constructor là `internal`. Dùng `registry.Add(def, anchor)`.
-2. **`GridCoord.Manhattan(a)`** — sai; phải `GridCoord.Manhattan(a, b)`.
-3. **`GridShapes.Neighbours4(c, 1)`** — sai; chỉ nhận `center`.
-4. **Gán `stage.Spawns = ...`** — không được; list chỉ đọc tham chiếu → `stage.Spawns.Add(...)`.
-5. **Object initializer cho struct readonly** (`TerrainOverride`, `MoveProfile`, `ActionRequest`, `DamageRequest`) — dùng constructor.
-6. **`grid.Get` ngoài lưới** → ném `ArgumentOutOfRangeException`; dùng `TryGet`.
-7. **Tưởng status tick ngay lượt gắn** — không; `CanTick = false` nên sống hết lượt kế.
-8. **Dùng `TryExecute(EndTurn)` rồi tưởng AI đã chạy** — không; muốn đủ nhịp dùng `session.EndTurn()`.
-9. **Subscribe trước `StartStage`** — `session.Events` còn null.
-10. **Sửa state trong event handler** — làm lệch thứ tự publish; handler chỉ nên đọc.
+### 15.1 Skill mới
 
-11. **`DamageEffect(UnitId.None, ...)` không phải AoE** — nó rơi về `ctx.Target` (một unit). Muốn đánh vùng, lặp `ctx.Units.UnitsIn(cells)`.
+1. `MyBehaviour : ISkillBehaviour` (Content/Skills).
+2. `BuildEffects(ctx)` — enqueue effect; damage dùng `DamageEffect`.
+3. `SkillDataAsset` → khi load tạo `SkillDefinition` (id, targeting, range, power, element, AP, cooldown, `IsClashSkill`, behaviour).
+4. Thêm id vào `UnitDefinition.SkillIds`.
+5. Nếu dùng cho Duel: thêm id vào `DuelDefinition.PlayerSkillIds` (và `IsClashSkill = true`).
 
-Thêm: `ClashDefinition.WinEffect` là `Func<IStatusEffect>` — mỗi lần gọi tạo instance mới; đừng cache instance vào nhiều nơi.
+### 15.2 Quái/ brain mới
+
+1. `MyBrain : IEnemyBrain` — `Plan` thuần, trả `EnemyIntent` (dùng `GridShapes` để tính danger).
+2. Đăng ký vào `EnemyBrainLibrary` với `Id`.
+3. `UnitDefinition.BrainId = "my-brain"`.
+4. Thêm vào `StageDefinition.Spawns`.
+
+### 15.3 Boss / màn mới
+
+1. Brain boss + (tuỳ chọn) `IBossPhaseController` riêng.
+2. `StageDefinition` mới (kích thước, spawn, terrains, boss id, `Clash`, `Duel`).
+3. `ClashRuleTable` cho các cặp chiêu; `DuelDefinition` cho pha 2.
+4. Dialogue nếu có.
+
+### 15.4 Địa hình mới
+
+1. `MyTerrain : ITerrainBehaviour` (Content/Terrain) — quyết định `BlocksMove`, `OnEnter`, `OnTurnStart`, `OnDamaged`.
+2. Đăng ký `TerrainId → behaviour`.
+3. `SetTerrain`/`TerrainOverride` dùng `(TerrainId)"my-terrain"`.
 
 ---
 
-## 14. Chạy test
+## 16. Mười một lỗi thường gặp (đã gặp thật khi làm Core)
 
-**Ngoài Unity (nhanh, ~120 ms):**
+| # | Lỗi | Cách tránh |
+|---|-----|-----------|
+| 1 | Gọi `Kill` sau khi đã `SetHp(0)` → mất `UnitDiedEvent` | `UnitRegistry.Kill` có `DeathPublished`; không tự set Hp về 0 trước khi gọi Kill |
+| 2 | Gắn status giữa lượt rồi bị tick ngay cuối lượt | Thiết kế `CanTick` đã xử lý; khi thêm status mới, dùng `StatusSet.Add` chứ không tự thêm entry |
+| 3 | Quên `includePlatforms: ["Editor"]` trong test asmdef → Unity chạy 0 test | Đặt đúng; chạy lại batchmode kiểm `results.xml` total > 0 |
+| 4 | `Does.Contain(object)` khác nhau giữa NUnit Unity và NUnit NuGet | Dùng `Enumerable.Contains(path, cell)` hoặc so sánh trực tiếp |
+| 5 | Telegraph công bố lúc pha Enemy → người chơi không kịp né | `PlanEnemyIntents` trước `BeginPlayerPhase`, resolve intent đã Declare |
+| 6 | `DamageEffect(UnitId.None, ...)` tưởng là AoE | Nó đánh vào `ctx.Target`; AoE phải lặp `UnitsIn(cells)` |
+| 7 | `UnitRegistry.Add/MoveTo` ném `InvalidOperationException` | Luôn `CanPlace` trước, hoặc coi chỗ đặt không hợp lệ là lỗi UI |
+| 8 | `Player`/`Boss` null | `IUnitRegistry.Player/Boss` có thể null; kiểm tra trước khi dùng |
+| 9 | Duel: quên `AwaitingFinisher` | Sau Win phải gửi `Attack`; validator sẽ trả `WrongPhase` nếu sai |
+| 10 | Tưởng `EndTurn` qua `TryExecute` chạy AI | Nó chỉ `Turn.EndTurn`; `GameSession.EndTurn()` mới chạy pha Enemy |
+| 11 | Sửa state từ UI (gán HP/position) | Không có setter public; mọi thay đổi qua `TryExecute`/effect |
+
+---
+
+## 17. Chạy test
 
 ```powershell
+# 1) Ngoài Unity — nhanh nhất, dùng dotnet bundled của Unity 6000.6.7f1
 & "C:\Program Files\Unity\Hub\Editor\6000.6.7f1\Editor\Data\DotNetSdk\dotnet.exe" `
-  test "D:\test\Behind the hero\Tools\CoreTests\CoreTests.csproj"
+    test "D:\test\Behind the hero\Tools\CoreTests\CoreTests.csproj"
+
+# 2) Build only
+& "C:\Program Files\Unity\Hub\Editor\6000.6.7f1\Editor\Data\DotNetSdk\dotnet.exe" `
+    build "D:\test\Behind the hero\Tools\CoreTests\CoreTests.csproj" -v q --nologo
+
+# 3) Unity EditMode (batchmode). Nếu project gốc đang mở trong Editor, dùng bản copy.
+& "C:\Program Files\Unity\Hub\Editor\6000.6.7f1\Editor\Unity.exe" -batchmode -quit `
+    -projectPath "D:\test\_core_check" -runTests -testPlatform EditMode `
+    -assemblyNames BTH.Core.Tests `
+    -testResults "D:\test\_core_check\results.xml" `
+    -logFile "D:\test\_core_check\unity.log"
+
+# Đọc kết quả (đợi file xuất hiện; Unity cha có thể exit 0 trước khi con xong)
+Select-String -Path "D:\test\_core_check\results.xml" -Pattern "<test-run"
 ```
 
-**Trong Unity (EditMode, batchmode):** phải đóng Editor đang mở project (hoặc dùng bản copy), sau đó:
-
-```powershell
-Unity.exe -batchmode -projectPath "<copy>" -runTests -testPlatform EditMode `
-          -assemblyNames BTH.Core.Tests -testResults "<copy>\results.xml" -logFile "<copy>\unity.log"
-```
-
-Test asmdef phải có `"includePlatforms": ["Editor"]`, nếu không Unity xếp vào PlayMode và chạy 0 test.
-
-**8 bộ test hiện có (47 test):** GridTests (8), PathfindingTests (6), TurnFlowTests (5), DamageTests (6), ClashTests (7), AiDeterminismTests (4), SnapshotTests (4), StageObjectiveTests (7).
+Kết quả hiện tại: **56/56 pass** (9 bộ), `dotnet` ~306 ms; Unity EditMode cũng 56/56.
 
 ---
 
-## 15. Ghi chú cho người chưa quen Unity
+## 18. Từ điển Unity cho người mới (đủ để đọc kế hoạch)
 
-| Từ Unity | Nghĩa | Trong Core |
-|---|---|---|
-| GameObject | vật thể trong scene | không có |
-| Prefab | khuôn mẫu vật thể | không có |
-| MonoBehaviour | class gắn vào vật thể, chạy mỗi frame | không có |
-| Scene | file lưu màn chơi | thay bằng `StageDefinition` (dữ liệu luật) |
-| ScriptableObject | asset dữ liệu trong project | Content dùng, rồi chuyển thành POCO của Core |
-| `Debug.Log` | in log | tương đương `Console.WriteLine` khi chạy ngoài Unity |
-
-Muốn hình dung: **Core là trọng tài + quyển luật**, Unity là **người quay phim và khán giả**. Trọng tài chỉ cần biết toạ độ, máu, lượt — không cần nhìn thấy sprite.
+| Khái niệm | Nghĩa ngắn |
+|-----------|-----------|
+| `GameObject` | "Đối tượng" trong scene; chứa component |
+| `Component` / `MonoBehaviour` | Hành vi gắn vào GameObject; chạy `Update` |
+| `Prefab` | Mẫu GameObject lưu thành asset, đem ra dùng nhiều nơi |
+| `Scene` | Màn chơi/không gian chứa GameObject |
+| `ScriptableObject` | Asset chứa **dữ liệu** (không nằm trong scene) — nơi để Unit/Skill/Stage |
+| `Transform` | Vị trí/xoay/scale của GameObject |
+| `SpriteRenderer` | Component vẽ sprite 2D |
+| `Canvas` / `RectTransform` | Hệ UI (uGUI) |
+| `TMP` (TextMeshPro) | Text UI chất lượng cao |
+| `Addressables` | Hệ load asset theo địa chỉ (chưa dùng) |
+| `EditMode test` | Test chạy ngay trong Editor, không cần scene — đúng loại Core dùng |
+| `PlayMode test` | Test chạy khi game đang play — dùng cho smoke test Unity |
+| `asmdef` | File khai báo assembly; quyết định lớp nào được reference lớp nào |
+| `UnityEngine.Random` | RNG của Unity — **cấm trong Core** |
 
 ---
 
-*Tài liệu này mô tả đúng public API tại thời điểm 2026-11-15. Nếu sửa Core, cập nhật lại mục tương ứng.*
+## 19. Checklist khi bắt đầu Content/UI
+
+**Content (P1):**
+
+- [ ] 9 `UnitDefinition` (Wanderer, Eosphoros, Imp, Gargoyle, 5 boss) + portrait id
+- [ ] ~22 `SkillDefinition` + behaviour cho chiêu đặc biệt; đánh dấu `IsClashSkill`
+- [ ] 6 brain: MeleeRusher, RangedLurker, 5 boss (kế thừa base), (AllyBrain đã cắt)
+- [ ] 5 `StageDefinition` (8×8, 9×9, 9×9, 10×10, 8×8) + terrain override
+- [ ] 5 `ClashDefinition` (power 15/14/16/18/18) + `ClashRuleTable`
+- [ ] 5 `DuelDefinition` (background/music/transition, boss 2 chiêu, player 3 chiêu, win effect)
+- [ ] 1 test simulation: start ải 1 → đánh → Duel → thắng
+
+**Unity/UI (P2–P3):**
+
+- [ ] `GameBootstrap` tạo `GameSession`, load stage, bind presenter
+- [ ] `BoardView`/`UnitView`/`BoardHighlighter` đọc event + `IGameStateView`
+- [ ] `InputController` → `ActionRequest` (phím mũi tên/G/S/D/E/Space + chuột)
+- [ ] `HudPresenter` (HP pips, AP, MP trang trí), command bar
+- [ ] `DuelScreenPresenter` (background, 2 bên, 3 thẻ + badge xanh/vàng/đỏ, finisher)
+- [ ] Dialogue view + 2 ending; menu/settings/audio
+- [ ] PlayMode smoke test: vào scene → đi 1 ô → đánh → EndTurn không lỗi
+
+---
+
+*Hết tài liệu. Khi thêm type/đổi chữ ký, cập nhật mục tương ứng + §2 file index + §12 nếu thêm event.*
