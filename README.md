@@ -8,8 +8,8 @@ Người chơi điều khiển **Wanderer** qua 5 ải, mỗi ải đối đầu
 
 | Phần | Trạng thái |
 |---|---|
-| **Core** — luật chơi (C# thuần, không dùng UnityEngine) | ✅ 163 file, **56 unit test xanh** (gồm Duel mode) |
-| Content — chiêu, quái, màn chơi, dữ liệu | ⏳ chưa làm |
+| **Core** — luật chơi (C# thuần, không dùng UnityEngine) | ✅ 163 file, **64 unit test xanh** (gồm auto finisher Duel) |
+| **Content** — chiêu, quái, màn chơi, Duel, thoại | ✅ 29 chiêu, 9 unit, 8 brain, 5 màn, 5 Duel, 11 đoạn thoại |
 | Unity — hiển thị, input, animation, âm thanh | ⏳ chưa làm |
 | UI — HUD, menu, Clash/Duel UI | ⏳ chưa làm |
 
@@ -26,7 +26,15 @@ Assets/
       Combat/      #   damage, effect, status, element, skill, clash
       Ai/          #   enemy intent, telegraph, boss phase
       Run/         #   rules, stage, snapshot, event bus, session, dialogue
-  Tests/           # BTH.Core.Tests — 56 test NUnit cho Core + Duel
+    Content/       # BTH.Content — dữ liệu game + hành vi chiêu/AI, không tham chiếu UnityEngine
+      Units/       #   9 unit definition (Wanderer, Eosphoros, quái, 5 boss)
+      Skills/      #   29 chiêu + behaviour (nón, hàng, chữ thập, vuông, xuyên giáp)
+      Brains/      #   8 bộ não: melee, ranged, ally, 5 boss
+      Stages/      #   5 màn 8×8 → 10×10, terrain override
+      Duels/       #   5 DuelDefinition cho Phase 2
+      Dialogues/   #   thoại trước/sau ải + 2 ending
+      Terrain/     #   floor, wall, pit, cracked, poison, lava
+  Tests/           # BTH.Core.Tests — 64 test NUnit cho Core + Content + Duel
 Tools/
   CoreTests/       # project dotnet để chạy test nhanh ngoài Unity
 Docs/

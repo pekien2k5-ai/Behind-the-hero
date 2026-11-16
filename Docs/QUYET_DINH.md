@@ -7,14 +7,14 @@
 
 - Phase 2 **không còn bàn cờ**: bỏ lưới/AP/di chuyển/End Turn; player trái, boss phải, nền chỉ là background.
 - Kích hoạt khi HP boss **< 70%**; có **chuyển cảnh** (~1,2 s) trước khi vào Duel.
-- Trong Duel chỉ có: chọn 1 trong 3 chiêu Clash mỗi vòng + đòn kết liễu khi boss Stagger.
+- Trong Duel chỉ có: chọn 1 trong 3 chiêu Clash mỗi vòng; thắng thì **tự đánh kết liễu và tự sang vòng**, không cần bấm Attack (chốt m02424 thay cho nút Kết liễu thủ công cũ).
 
 ## 2. Luật Duel (đã chốt)
 
 | # | Luật | Chốt |
 |---|---|---|
 | 1 | Đòn phản công khi thắng | 1 đòn = ATK người chơi, nhân theo status của boss (Stagger ×2, Flanked ×1.5) |
-| 2 | Stagger | Kéo dài 1 round, hết sau đòn kết liễu |
+| 2 | Stagger | Kéo dài 1 round, kết thúc ngay sau đòn kết liễu tự động |
 | 3 | Hiệu ứng thắng riêng từng boss | Ải 1: Stagger. Ải 2: Poison 3 HP/lượt ×2 (không Stagger). Ải 3: Flanked. Ải 4: Stagger + 3 đòn kết liễu. Ải 5: Stagger |
 | 4 | Hoà | **Mỗi bên mất 10% uy lực của mình** (K chốt: "nhận 10% sát thương thôi") |
 | 5 | Thua | Player mất đúng `BossPower` HP, xuyên giáp; **không** gắn thêm status |

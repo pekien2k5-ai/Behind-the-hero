@@ -80,8 +80,7 @@ namespace BTH.Core.Combat
         public IReadOnlyList<ClashOption> GetOptions()
         {
             var options = new List<ClashOption>();
-            if (_duel == null || _duel.IsOver || _duel.AwaitingFinisher || _definition == null ||
-                _state.Skills == null)
+            if (_duel == null || _duel.IsOver || _definition == null || _state.Skills == null)
             {
                 return options;
             }
@@ -116,11 +115,6 @@ namespace BTH.Core.Combat
                 throw new InvalidOperationException("Duel đã kết thúc.");
             }
 
-            if (_duel.AwaitingFinisher)
-            {
-                throw new InvalidOperationException("Phải đánh kết liễu trước khi chọn chiêu tiếp.");
-            }
-
             if (_state.Skills == null || !_state.Skills.TryGet(playerSkillId, out SkillDefinition skill) ||
                 skill == null || !skill.IsClashSkill)
             {
@@ -135,7 +129,6 @@ namespace BTH.Core.Combat
             IStatusEffect applied = null;
             int damageToPlayer = 0;
             int damageToBoss = 0;
-            bool advanceRound = true;
 
             switch (result)
             {
@@ -146,9 +139,6 @@ namespace BTH.Core.Combat
                         AddStatus(_boss, applied);
                     }
 
-                    _duel.AwaitingFinisher = true;
-                    _duel.FinishersRemaining = Math.Max(1, _definition.FinisherCount);
-                    advanceRound = false;
                     break;
 
                 case ClashResult.Draw:
@@ -174,9 +164,15 @@ namespace BTH.Core.Combat
             _duel.LastResult = result;
             _state.Events.Publish(new ClashResolvedEvent(_boss.Id, skill.Id, result, playerPower, bossPower));
 
+            // Thắng Clash: đánh kết liễu tự động (không cần người chơi bấm Attack).
+            if (result == ClashResult.Win)
+            {
+                damageToBoss = ApplyFinishers();
+            }
+
             var round = new ClashRoundResult(result, playerPower, bossPower, damageToPlayer, damageToBoss, applied);
             CheckDeaths();
-            if (!_duel.IsOver && advanceRound)
+            if (!_duel.IsOver)
             {
                 EnterRound(_duel.Round + 1);
             }
@@ -184,17 +180,20 @@ namespace BTH.Core.Combat
             return round;
         }
 
-        public bool TryFinisher(out DamageResult damage)
+        /// <summary>
+        /// Đánh kết liễu tự động sau khi thắng Clash: dùng ATK cơ bản, giáp vẫn áp dụng,
+        /// boss đang Stagger nên damage ×2. Trả tổng damage đã gây.
+        /// </summary>
+        private int ApplyFinishers()
         {
-            damage = default;
-            if (_duel == null || !_duel.AwaitingFinisher || _player == null || _boss == null ||
-                _state.Damage == null)
+            if (_player == null || _boss == null || _state.Damage == null)
             {
-                return false;
+                return 0;
             }
 
-            bool any = false;
-            while (_duel.FinishersRemaining > 0 && _boss.IsAlive && _player.IsAlive)
+            int total = 0;
+            int count = Math.Max(1, _definition.FinisherCount);
+            for (int i = 0; i < count && _boss.IsAlive && _player.IsAlive; i++)
             {
                 var request = new DamageRequest(
                     _player.Id,
@@ -204,28 +203,15 @@ namespace BTH.Core.Combat
                     false,
                     false,
                     _player.Center);
-                damage = _state.Damage.Apply(request, _state);
-                any = true;
-                _duel.FinishersRemaining--;
+                DamageResult damage = _state.Damage.Apply(request, _state);
+                total += damage.FinalDamage;
                 if (damage.Killed)
                 {
                     break;
                 }
             }
 
-            _duel.AwaitingFinisher = false;
-            if (!any)
-            {
-                return false;
-            }
-
-            CheckDeaths();
-            if (!_duel.IsOver)
-            {
-                EnterRound(_duel.Round + 1);
-            }
-
-            return true;
+            return total;
         }
 
         public DuelSnapshot Capture()
@@ -242,8 +228,6 @@ namespace BTH.Core.Combat
                 _duel.BossSkillId,
                 _duel.BossPower,
                 _duel.BossElement,
-                _duel.AwaitingFinisher,
-                _duel.FinishersRemaining,
                 _duel.LastResult,
                 _duel.IsOver,
                 _duel.Winner,
@@ -269,8 +253,6 @@ namespace BTH.Core.Combat
                 BossSkillId = snapshot.BossSkillId,
                 BossPower = snapshot.BossPower,
                 BossElement = snapshot.BossElement,
-                AwaitingFinisher = snapshot.AwaitingFinisher,
-                FinishersRemaining = snapshot.FinishersRemaining,
                 LastResult = snapshot.LastResult,
                 IsOver = snapshot.IsOver,
                 Winner = snapshot.Winner
@@ -304,12 +286,12 @@ namespace BTH.Core.Combat
 
             _duel.BossSkillIndex = index;
             _duel.BossSkillId = bossSkillId;
-            _duel.BossPower = bossSkill.Power;
+            _duel.BossPower = _definition.BossPower > 0 ? _definition.BossPower : bossSkill.Power;
             _duel.BossElement = bossSkill.Element;
             _duel.AddSeen(bossSkillId);
             _state.Knowledge?.MarkSeen(RunKnowledge.BossSkillSeenPrefix + bossSkillId);
 
-            _state.Events.Publish(new DuelRoundStartedEvent(round, bossSkillId, bossSkill.Power));
+            _state.Events.Publish(new DuelRoundStartedEvent(round, bossSkillId, _duel.BossPower));
         }
 
         private void CheckDeaths()
@@ -335,7 +317,6 @@ namespace BTH.Core.Combat
         {
             _duel.IsOver = true;
             _duel.Winner = winner;
-            _duel.AwaitingFinisher = false;
             _duel.LastResult = lastResult;
             _state.Events.Publish(new DuelEndedEvent(lastResult, winner));
         }

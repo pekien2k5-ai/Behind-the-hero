@@ -29,7 +29,7 @@ Phase 1 (bàn cờ, hiện có)
     1. Boss công bố chiêu (banner tên chiêu + hệ + uy lực)
     2. Người chơi chọn 1 trong 3 chiêu Clash (badge Win/Draw/Lose dự đoán)
     3. Resolve → hiệu ứng + damage + status
-    4. Nếu thắng: boss Stagger (hoặc hiệu ứng riêng của ải) → player đánh kết liễu
+    4. Nếu thắng: boss Stagger (hoặc hiệu ứng riêng của ải) → **tự đánh kết liễu** (FinisherCount đòn), rồi sang round kế
     5. Kiểm tra chết → kết thúc, ngược lại sang round kế
         │
         ├── boss chết  → VICTORY (Ending chọn ở dialogue cuối ải 5)
@@ -62,7 +62,7 @@ public sealed class DuelDefinition
 
     public int RoundLimit = 0;           // 0 = không giới hạn (mặc định)
     public float DrawChipRatio = 0.10f;  // hoà: mỗi bên mất 10% uy lực của mình
-    public int FinisherCount = 1;        // ải 4 = 3 nhát chém liên hoàn
+    public int FinisherCount = 1;        // số nhát kết liễu tự động (ải 4 = 3)
 
     public Func<IStatusEffect> WinEffect;  // mặc định StaggerStatus lên boss
     public Func<IStatusEffect> LoseEffect; // mặc định null (chỉ damage)
@@ -80,9 +80,6 @@ public sealed class DuelState
     public string BossSkillId;
     public int BossPower;
     public ElementId BossElement;
-    public bool BossStaggered;
-    public bool AwaitingFinisher;
-    public int FinishersRemaining;    // = FinisherCount khi vừa thắng
     public ClashResult LastResult;
     public bool IsOver;
     public UnitId Winner;             // None nếu chưa xong
@@ -100,8 +97,7 @@ public interface IClashDuel
 
     void Start(GameState state, DuelDefinition definition, UnitState player, UnitState boss);
     IReadOnlyList<ClashOption> GetOptions();
-    ClashRoundResult Choose(string playerSkillId);
-    bool TryFinisher(out DamageResult damage);   // gọi nhiều lần tới khi hết FinishersRemaining
+    ClashRoundResult Choose(string playerSkillId);   // resolve ngay + tự finisher + tự sang vòng
     DuelSnapshot Capture();
     void Restore(DuelSnapshot snapshot);
 }
@@ -125,11 +121,11 @@ Quy tắc resolve (dùng chung `ClashRuleTable.GetBonus` với phase Clash):
 
 | Kết quả | Điều kiện | Hệ quả |
 |---|---|---|
-| **Win** | PlayerPower > BossPower | boss **không mất HP ngay**; gắn `WinEffect` (mặc định Stagger); player được `FinisherCount` đòn kết liễu |
+| **Win** | PlayerPower > BossPower | gắn `WinEffect` (mặc định Stagger); **tự đánh `FinisherCount` đòn kết liễu** rồi sang vòng — không cần bấm Attack |
 | **Draw** | bằng nhau | mỗi bên mất `round(power * 10%)` HP (xuyên giáp), không status |
 | **Lose** | PlayerPower < BossPower | player mất `BossPower` HP (xuyên giáp); `LoseEffect` nếu có |
 
-Finisher: `DamageCalculator.Apply(DamageRequest(player → boss, BasePower = player.Attack, element = player.NativeElement, ignoresArmor: false))` — ăn multiplier từ status của boss (Stagger ×2, Flanked ×1.5). Hết `FinishersRemaining` → round++.
+Finisher tự động: `DamageCalculator.Apply(DamageRequest(player → boss, BasePower = player.Attack, element = player.NativeElement, ignoresArmor: false))` lặp `FinisherCount` lần ngay sau Win — ăn multiplier từ status của boss (Stagger ×2, Flanked ×1.5). Xong → round++, không có cửa sổ chờ người chơi bấm.
 
 Kết thúc: boss chết → Winner = player; player chết → Winner = boss; `IsOver = true`; publish `DuelEndedEvent`.
 
@@ -146,25 +142,27 @@ Kết thúc: boss chết → Winner = player; player chết → Winner = boss; `
 | `Core/Combat/ClashRoundResult.cs` | mới (§2.4) |
 | `Core/Combat/ClashMath.cs` | `EffectivePower(skill, bonus)`, `Compare(a,b)` dùng chung |
 | `Core/Combat/IClashDuel.cs` + `ClashDuel.cs` | mới (§2.3) |
-| `Core/Run/DuelSnapshot.cs` | mới (Round, BossSkillIndex, BossSkillId, BossPower, BossElement, Staggered, AwaitingFinisher, FinishersRemaining, LastResult, IsOver, Winner, SeenBossSkills) |
-| `Core/Run/GameSession.cs` | `TryEnterBossPhase()` → `EnterDuel()` khi HP < 70%; `TryExecute` route ClashSkill/Attack; `EndTurn` bỏ qua khi Duel; clear telegraph |
-| `Core/Actions/ActionValidator.cs` | Duel: chỉ `ClashSkill` và `Attack` khi `AwaitingFinisher`; còn lại lỗi `WrongPhase` |
+| `Core/Run/DuelSnapshot.cs` | mới (Round, BossSkillIndex, BossSkillId, BossPower, BossElement, LastResult, IsOver, Winner, SeenBossSkills) |
+| `Core/Run/GameSession.cs` | `TryEnterBossPhase()` → `EnterDuel()` khi HP < 70%; `TryExecute` route ClashSkill; `EndTurn` bỏ qua khi Duel; clear telegraph |
+| `Core/Actions/ActionValidator.cs` | Duel: **chỉ** `ClashSkill`; còn lại lỗi `WrongPhase` (Attack/EndTurn/Guard/Move đều bị chặn) |
 | `Core/Actions/ActionError.cs` | thêm `WrongPhase` |
-| `Core/Actions/GameActionExecutor.cs` | `ClashSkill` → `Duel.Choose`; `Attack` trong Duel → `Duel.TryFinisher`; bỏ nhánh Clash cũ trong grid |
+| `Core/Actions/GameActionExecutor.cs` | `ClashSkill` → `Duel.Choose` (bên trong Choose tự finisher + sang vòng); không còn route Attack trong Duel |
 | `Core/Run/ObjectiveEvaluator.cs` | không áp `TurnIndex > TurnLimit` khi `Phase == Duel` |
 | `Core/Run/GameSnapshot.cs` + `SnapshotService` | thêm `DuelSnapshot`, Capture/Restore/ContentEquals |
 | `Core/Run/Events/` | `DuelRoundStartedEvent(round, bossSkillId, bossPower)`, `DuelEndedEvent(result, winner)` |
 | `Core/Turn/TurnManager.cs` | `BeginDuel()`: Phase=Duel + checkpoint ClashStart; `EndTurn` no-op khi Duel |
 
-**Test mới `Assets/Tests/DuelFlowTests.cs` (8 ca):**
+**Test mới `Assets/Tests/DuelFlowTests.cs` (10 ca):**
 1. Boss HP < 70% → phase `Duel`, checkpoint `ClashStart`, HP giữ nguyên, status bị clear.
-2. Thắng Clash → boss Stagger + `AwaitingFinisher`; Finisher trừ đúng ×2.
+2. Thắng Clash → boss Stagger + finisher tự động ×2, tự sang vòng 2 (không cần Attack).
 3. Hoà → cả 2 mất 10% uy lực.
 4. Thua → player mất đúng `BossPower`.
-5. Finisher giết boss → `Victory` + `StageEndedEvent`.
+5. Finisher tự động giết boss → `Victory` + `StageEndedEvent`.
 6. Lose giết player → `DefeatPlayerDead`.
-7. Validator: Duel từ chối Move/EndTurn/Guard; cho ClashSkill; Attack chỉ khi `AwaitingFinisher`.
+7. Validator: Duel từ chối Move/EndTurn/Guard/**Attack**; chỉ cho ClashSkill.
 8. Snapshot giữa Duel → Restore trùng khớp; rewind từ thua về round 1, `RunKnowledge` giữ chiêu boss đã thấy.
+9. Rule table ưu tiên cặp chiêu → cặp hệ → mặc định +3.
+10. `Attack` trong Duel trả `WrongPhase` (finisher là tự động).
 
 ---
 
@@ -196,7 +194,7 @@ File gợi ý: `Content/Duels/DuelCatalog.cs` + 5 `DuelDefinition`; `Content/Ski
 - 2 thanh HP + tên; badge "PHASE 2"; round counter; nút Settings nhỏ.
 - Banner chiêu boss (tên + hệ + uy lực) trước khi chọn.
 - 3 card chiêu: icon, tên, power, badge xanh/vàng/đỏ.
-- Nút "Kết liễu" (hiện `FinishersRemaining`); ải 4 hiện 3 chấm.
+- Đòn kết liễu **tự động**: hiện `FinisherCount` nhát (ải 4 hiện 3 chấm); không có nút "Kết liễu".
 - Flash khi clash, shake khi Lose, slow-motion khi boss chết.
 
 **Transition:** 1 prefab, tham số màu/nhạc; 1,2 s; rung + flash + `boss_roar` + `transform_dark` → fade đen → fade in background.

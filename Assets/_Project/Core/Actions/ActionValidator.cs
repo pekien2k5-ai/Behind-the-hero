@@ -113,15 +113,7 @@ namespace BTH.Core.Actions
 
             if (state.Turn.Phase == TurnPhase.Duel)
             {
-                if (request.Kind == ActionKind.Attack && state.Duel?.State?.AwaitingFinisher == true)
-                {
-                    var duelBoss = state.Units.Boss;
-                    if (duelBoss != null)
-                    {
-                        result.Add(duelBoss.Position);
-                    }
-                }
-                else if (request.Kind == ActionKind.ClashSkill)
+                if (request.Kind == ActionKind.ClashSkill)
                 {
                     result.Add(actor.Position);
                 }
@@ -413,11 +405,6 @@ namespace BTH.Core.Actions
 
             if (request.Kind == ActionKind.ClashSkill)
             {
-                if (duel.State.AwaitingFinisher)
-                {
-                    return ValidationResult.Fail(ActionError.WrongPhase, "Phải đánh kết liễu trước");
-                }
-
                 if (state.Skills == null || !state.Skills.TryGet(request.SkillId, out var skill) ||
                     skill == null || !skill.IsClashSkill ||
                     !ContainsSkillId(duel.Definition.PlayerSkillIds, skill.Id) ||
@@ -429,30 +416,8 @@ namespace BTH.Core.Actions
                 return ValidationResult.Ok();
             }
 
-            if (request.Kind == ActionKind.Attack)
-            {
-                if (!duel.State.AwaitingFinisher)
-                {
-                    return ValidationResult.Fail(ActionError.WrongPhase, "Boss chưa choáng");
-                }
-
-                var boss = state.Units.Boss;
-                if (boss == null || !boss.IsAlive)
-                {
-                    return ValidationResult.Fail(ActionError.TargetEmpty, "Boss đã chết");
-                }
-
-                var target = state.Units.At(request.TargetCell);
-                if (target == null || target.Id != boss.Id)
-                {
-                    return ValidationResult.Fail(ActionError.InvalidTarget, "Chỉ đánh boss");
-                }
-
-                return ValidationResult.Ok();
-            }
-
             return ValidationResult.Fail(ActionError.WrongPhase,
-                "Trong Duel chỉ chọn chiêu Clash hoặc đòn kết liễu");
+                "Trong Duel chỉ chọn chiêu Clash; thắng thì tự đánh kết liễu.");
         }
 
         private static bool ContainsSkillId(IReadOnlyList<string> ids, string skillId)

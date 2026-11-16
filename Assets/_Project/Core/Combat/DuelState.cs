@@ -23,11 +23,6 @@ namespace BTH.Core.Combat
 
         public ElementId BossElement { get; internal set; } = ElementId.None;
 
-        /// <summary>Đã thắng Clash, chờ đánh kết liễu.</summary>
-        public bool AwaitingFinisher { get; internal set; }
-
-        public int FinishersRemaining { get; internal set; }
-
         public ClashResult LastResult { get; internal set; }
 
         public bool IsOver { get; internal set; }

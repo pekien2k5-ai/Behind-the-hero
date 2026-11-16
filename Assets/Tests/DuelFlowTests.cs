@@ -51,7 +51,7 @@ namespace BTH.Core.Tests
         }
 
         [Test]
-        public void ClashWin_AppliesEffect_AndFinisherDealsDoubleDamage()
+        public void ClashWin_AppliesEffect_AndAutoFinisherDealsDoubleDamage()
         {
             var session = CreateDuelSession(Duel());
             EnterDuel(session);
@@ -62,16 +62,24 @@ namespace BTH.Core.Tests
 
             Assert.That(result.Success, Is.True, result.Message);
             Assert.That(boss.IsStaggered, Is.True, "Thắng Clash phải gắn Stagger cho boss.");
-            Assert.That(session.State.Duel.State.AwaitingFinisher, Is.True);
             Assert.That(session.State.Duel.State.LastResult, Is.EqualTo(ClashResult.Win));
+            Assert.That(boss.Hp, Is.EqualTo(4), "4 ATK × 2 (Stagger) = 8, tự đánh ngay.");
+            Assert.That(session.State.Duel.State.Round, Is.EqualTo(2), "Tự sang vòng sau.");
+        }
 
-            int before = boss.Hp;
-            ActionResult finisher = session.TryExecute(ActionRequest.Attack(hero.Id, boss.Position));
+        [Test]
+        public void Attack_InDuel_IsRejected_BecauseFinisherIsAutomatic()
+        {
+            var session = CreateDuelSession(Duel());
+            EnterDuel(session);
+            var hero = session.State.Units.Player;
+            var boss = session.State.Units.Boss;
 
-            Assert.That(finisher.Success, Is.True, finisher.Message);
-            Assert.That(before - boss.Hp, Is.EqualTo(8), "4 ATK × 2 (Stagger) = 8.");
-            Assert.That(session.State.Duel.State.AwaitingFinisher, Is.False);
-            Assert.That(session.State.Duel.State.Round, Is.EqualTo(2));
+            ActionResult result = session.TryExecute(ActionRequest.Attack(hero.Id, boss.Position));
+
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Error, Is.EqualTo(ActionError.WrongPhase));
+            Assert.That(boss.Hp, Is.EqualTo(12), "Không có đòn đánh tay trong Duel.");
         }
 
         [Test]
@@ -88,7 +96,6 @@ namespace BTH.Core.Tests
             Assert.That(hero.Hp, Is.EqualTo(10), "12 - round(15 × 0.10) = 10.");
             Assert.That(boss.Hp, Is.EqualTo(10), "Boss vào Duel ở 12 HP, hoà mất thêm 2.");
             Assert.That(session.State.Duel.State.LastResult, Is.EqualTo(ClashResult.Draw));
-            Assert.That(session.State.Duel.State.AwaitingFinisher, Is.False);
             Assert.That(session.State.Duel.State.Round, Is.EqualTo(2));
             Assert.That(session.State.Duel.State.BossSkillId, Is.EqualTo("boss-strike-2"));
         }
@@ -119,11 +126,10 @@ namespace BTH.Core.Tests
             EnterDuel(session);
 
             var hero = session.State.Units.Player;
-            session.TryExecute(ActionRequest.ClashSkill(hero.Id, "sword"));
-            ActionResult finisher = session.TryExecute(ActionRequest.Attack(hero.Id, boss.Position));
+            ActionResult clash = session.TryExecute(ActionRequest.ClashSkill(hero.Id, "sword"));
 
-            Assert.That(finisher.Success, Is.True, finisher.Message);
-            Assert.That(boss.IsAlive, Is.False);
+            Assert.That(clash.Success, Is.True, clash.Message);
+            Assert.That(boss.IsAlive, Is.False, "Finisher tự động phải giết boss.");
             Assert.That(session.State.Duel.State.Winner, Is.EqualTo(hero.Id));
             Assert.That(session.State.Result, Is.EqualTo(StageResult.Victory));
             Assert.That(session.State.Turn.Phase, Is.EqualTo(TurnPhase.StageEnded));
@@ -139,8 +145,8 @@ namespace BTH.Core.Tests
 
             session.TryExecute(ActionRequest.ClashSkill(hero.Id, "sword"));
 
-            Assert.That(session.State.Duel.State.BossPower, Is.EqualTo(15),
-                "Trong Duel phải dùng power của Duel, không dùng Stage.Clash.");
+            Assert.That(session.State.Duel.State.BossPower, Is.EqualTo(10),
+                "Sang vòng 2 lấy uy lực chiêu boss thứ hai, không dùng Stage.Clash.");
             Assert.That(session.State.Knowledge.HasSeen(RunKnowledge.BossSkillSeenPrefix + "boss-strike"),
                 Is.True);
         }
@@ -153,21 +159,21 @@ namespace BTH.Core.Tests
             var hero = session.State.Units.Player;
             var boss = session.State.Units.Boss;
             session.TryExecute(ActionRequest.ClashSkill(hero.Id, "sword"));
+            Assert.That(boss.IsAlive, Is.True);
 
             GameSnapshot snapshot = session.State.Snapshots.Capture();
             Assert.That(snapshot.Duel, Is.Not.Null);
-            Assert.That(snapshot.Duel.AwaitingFinisher, Is.True);
             int capturedBossHp = boss.Hp;
+            int capturedRound = session.State.Duel.State.Round;
 
-            session.TryExecute(ActionRequest.Attack(hero.Id, boss.Position));
-            Assert.That(session.State.Duel.State.AwaitingFinisher, Is.False);
+            ApplyDamage(session, boss.Id, 1); // Stagger ×2 → mất 2 HP, vẫn còn sống.
+            Assert.That(boss.Hp, Is.EqualTo(capturedBossHp - 2));
 
             session.State.Snapshots.Restore(snapshot);
 
             Assert.That(session.State.Turn.Phase, Is.EqualTo(TurnPhase.Duel));
             Assert.That(session.State.Units.Boss.Hp, Is.EqualTo(capturedBossHp));
-            Assert.That(session.State.Duel.State.AwaitingFinisher, Is.True);
-            Assert.That(session.State.Duel.State.Round, Is.EqualTo(1));
+            Assert.That(session.State.Duel.State.Round, Is.EqualTo(capturedRound));
         }
 
         [Test]

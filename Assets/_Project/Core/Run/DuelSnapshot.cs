@@ -11,7 +11,7 @@ namespace BTH.Core.Run
     public sealed class DuelSnapshot
     {
         public DuelSnapshot(string duelId, int round, int bossSkillIndex, string bossSkillId,
-            int bossPower, ElementId bossElement, bool awaitingFinisher, int finishersRemaining,
+            int bossPower, ElementId bossElement,
             ClashResult lastResult, bool isOver, UnitId winner, IReadOnlyList<string> seenBossSkills)
         {
             DuelId = duelId ?? string.Empty;
@@ -20,8 +20,6 @@ namespace BTH.Core.Run
             BossSkillId = bossSkillId ?? string.Empty;
             BossPower = bossPower;
             BossElement = bossElement;
-            AwaitingFinisher = awaitingFinisher;
-            FinishersRemaining = finishersRemaining;
             LastResult = lastResult;
             IsOver = isOver;
             Winner = winner;
@@ -39,10 +37,6 @@ namespace BTH.Core.Run
         public int BossPower { get; }
 
         public ElementId BossElement { get; }
-
-        public bool AwaitingFinisher { get; }
-
-        public int FinishersRemaining { get; }
 
         public ClashResult LastResult { get; }
 
@@ -62,8 +56,7 @@ namespace BTH.Core.Run
             if (DuelId != other.DuelId || Round != other.Round ||
                 BossSkillIndex != other.BossSkillIndex || BossSkillId != other.BossSkillId ||
                 BossPower != other.BossPower || BossElement != other.BossElement ||
-                AwaitingFinisher != other.AwaitingFinisher ||
-                FinishersRemaining != other.FinishersRemaining || LastResult != other.LastResult ||
+                LastResult != other.LastResult ||
                 IsOver != other.IsOver || Winner != other.Winner ||
                 SeenBossSkills.Count != other.SeenBossSkills.Count)
             {

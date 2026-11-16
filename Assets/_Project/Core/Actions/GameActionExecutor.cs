@@ -71,11 +71,6 @@ namespace BTH.Core.Actions
 
         private ActionResult ExecuteAttack(UnitState actor, ActionRequest request, GameState state)
         {
-            if (state.Turn.Phase == TurnPhase.Duel)
-            {
-                return ExecuteDuelFinisher(actor, state);
-            }
-
             var target = state.Units.At(request.TargetCell);
             if (target == null)
             {
@@ -174,19 +169,6 @@ namespace BTH.Core.Actions
             var targetCell = boss != null ? boss.Position : actor.Position;
             state.Events.Publish(new SkillUsedEvent(actor.Id, request.SkillId, targetCell));
             state.Events.Publish(new UnitActedEvent(actor.Id, ActionKind.ClashSkill, targetCell));
-            return FinishIfOver(state);
-        }
-
-        private ActionResult ExecuteDuelFinisher(UnitState actor, GameState state)
-        {
-            if (!state.Duel.TryFinisher(out _))
-            {
-                return ActionResult.Fail(ActionError.WrongPhase, "Chưa có đòn kết liễu");
-            }
-
-            var boss = state.Units.Boss;
-            var targetCell = boss != null ? boss.Position : actor.Position;
-            state.Events.Publish(new UnitActedEvent(actor.Id, ActionKind.Attack, targetCell));
             return FinishIfOver(state);
         }
 

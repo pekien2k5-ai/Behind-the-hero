@@ -23,6 +23,9 @@ namespace BTH.Core.Combat
         /// <summary>Đúng 3 chiêu người chơi được chọn trong Duel này.</summary>
         public List<string> PlayerSkillIds { get; set; } = new List<string>();
 
+        /// <summary>Uy lực Clash cố định của boss mỗi vòng; 0 = lấy Power của chiêu boss.</summary>
+        public int BossPower { get; set; }
+
         /// <summary>0 = không giới hạn (mặc định).</summary>
         public int RoundLimit { get; set; }
 

@@ -20,11 +20,11 @@ namespace BTH.Core.Combat
 
         IReadOnlyList<ClashOption> GetOptions();
 
-        /// <summary>Người chơi chọn chiêu; ném nếu sai lượt/sai chiêu.</summary>
+        /// <summary>
+        /// Người chơi chọn chiêu; resolve ngay (thắng tự đánh kết liễu và tự sang vòng).
+        /// Ném nếu sai lượt/sai chiêu.
+        /// </summary>
         ClashRoundResult Choose(string playerSkillId);
-
-        /// <summary>Đánh kết liễu khi boss đang choáng; false nếu chưa tới lượt kết liễu.</summary>
-        bool TryFinisher(out DamageResult damage);
 
         DuelSnapshot Capture();
 

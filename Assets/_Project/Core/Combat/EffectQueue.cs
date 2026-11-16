@@ -13,6 +13,12 @@ namespace BTH.Core.Combat
 
         public int Count => _effects.Count;
 
+        /// <summary>
+        /// Các effect đang chờ, chỉ đọc. Content dùng để xem trước effect của một chiêu (AI/telegraph)
+        /// mà không chạy chúng trên state thật.
+        /// </summary>
+        public IReadOnlyList<IGameEffect> Items => _effects;
+
         public void Enqueue(IGameEffect effect)
         {
             if (effect != null)

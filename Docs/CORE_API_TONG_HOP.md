@@ -3,8 +3,8 @@
 > Tài liệu tra cứu cho cả nhóm: **lớp `BTH.Core` đang có gì, dùng thế nào, sai chỗ nào thì sửa ở đâu.**
 > Đối tượng: người viết Content (skill/quái/màn), người viết Unity/UI, người review.
 >
-> **Trạng thái 2026-11-15:** Core hoàn tất — **163 file · 7.366 dòng · 56 unit test xanh** (dotnet + Unity EditMode),
-> gồm **Duel mode** cho Phase 2. Content/Unity/UI chưa có code.
+> **Trạng thái 2026-11-16:** Core + Content hoàn tất — **163 + 30 file · 64 unit test xanh** (dotnet + Unity EditMode),
+> gồm **Duel mode** cho Phase 2 với auto finisher. Unity/UI chưa có code.
 > Kiến trúc & lý do thiết kế: `KIEN_TRUC_UNITY_BEHIND_THE_HERO.md`. Luật Duel đã chốt: `QUYET_DINH.md`.
 
 ---
@@ -15,7 +15,7 @@
    UI chỉ đọc event / gọi `Validate` + `TryExecute`; không tự trừ HP, không tự tính damage, không tự quyết thắng thua.
 2. **Mọi thay đổi state đi qua `ActionRequest`.**
    `ActionValidator.Validate` (thuần, chỉ đọc) → `GameActionExecutor.Execute` (sửa state) → event.
-   Trong Duel cũng vậy: `ActionRequest.ClashSkill` và `ActionRequest.Attack` (finisher).
+   Trong Duel cũng vậy: chỉ gửi `ActionRequest.ClashSkill`; thắng thì đòn kết liễu tự động, không gửi `Attack`.
 3. **Thêm nội dung không sửa Core.**
    Unit/skill/brain/stage/duel đều là POCO do Content dựng từ ScriptableObject; Core chỉ thấy interface/POCO.
 
@@ -400,8 +400,8 @@ struct ActionResult     { bool Success; ActionError Error; string Message; Ok()/
 
 Trong **Duel**, `Execute` rẽ nhánh:
 
-- `ActionRequest.ClashSkill` → `ExecuteDuelClash` → `ClashDuel.Choose(skillId)` → `SkillUsedEvent` + `UnitActedEvent`.
-- `ActionRequest.Attack` (khi `AwaitingFinisher`) → `ExecuteDuelFinisher` → `ClashDuel.TryFinisher` → `UnitActedEvent`.
+- `ActionRequest.ClashSkill` → `ExecuteDuelClash` → `ClashDuel.Choose(skillId)` → resolve + **finisher tự động** → `SkillUsedEvent` + `UnitActedEvent`.
+- Không còn route `Attack` trong Duel: `ValidateDuel` chặn `Attack` với `WrongPhase`.
 
 Sau mỗi nhánh (trừ EndTurn), executor gọi `FinishIfOver`: objective ≠ None && phase ≠ StageEnded → `Turn.FinishStage`.
 
@@ -430,7 +430,7 @@ Chung:
 - Attack → 4 ô kề có địch;
 - Skill → quét lưới, lọc qua `ValidateSkillTarget` (Self trả ô actor);
 - Guard/EndTurn → ô actor;
-- **Duel**: Attack + `AwaitingFinisher` → ô boss; ClashSkill → ô actor.
+- **Duel**: ClashSkill → ô actor; Attack/Guard/Move/EndTurn đều bị từ chối.
 
 ### 6.3 `ValidateDuel` (Duel mode)
 
@@ -438,13 +438,10 @@ Chung:
 |-----------|---------|
 | `state.Duel == null` hoặc `!IsActive` | `ClashNotAvailable` |
 | Duel đã kết thúc | `StageEnded` |
-| `ClashSkill` khi đang `AwaitingFinisher` | `WrongPhase` |
 | `ClashSkill` không phải `IsClashSkill` | `InvalidTarget` |
 | Skill không nằm trong `DuelDefinition.PlayerSkillIds` | `SkillNotReady` |
 | Actor không sở hữu skill | `SkillNotReady` |
-| `Attack` khi **không** `AwaitingFinisher` | `WrongPhase` |
-| `Attack` target không phải ô boss | `InvalidTarget` |
-| Mọi kind khác (Move/Guard/EndTurn…) | `WrongPhase` |
+| Mọi kind khác (Attack/Move/Guard/EndTurn…) | `WrongPhase` |
 
 ---
 
@@ -673,7 +670,7 @@ class DuelDefinition {
   List<string> PlayerSkillIds = new();   // chiêu Clash người chơi được chọn
   int RoundLimit;                        // 0 = không giới hạn
   float DrawChipRatio = 0.10f;           // mỗi bên mất 10% power khi Draw
-  int FinisherCount = 1;                 // số đòn finisher sau Win
+  int FinisherCount = 1;                 // số đòn kết liễu tự động sau Win
   ClashRuleTable Rules = new();
   Func<IStatusEffect> WinEffect = () => new StaggerStatus();
   Func<IStatusEffect> LoseEffect;        // null = không gắn
@@ -683,7 +680,6 @@ class DuelDefinition {
 class DuelState {
   string DuelId; int Round, BossSkillIndex; string BossSkillId;
   int BossPower; ElementId BossElement;
-  bool AwaitingFinisher; int FinishersRemaining;
   ClashResult LastResult; bool IsOver; UnitId Winner;
   IReadOnlyList<string> SeenBossSkills;
 }
@@ -697,8 +693,7 @@ interface IClashDuel {
   DuelState State; DuelDefinition Definition; bool IsActive;
   void Start(GameState state, DuelDefinition definition, UnitState player, UnitState boss);
   IReadOnlyList<ClashOption> GetOptions();
-  ClashRoundResult Choose(string playerSkillId);
-  bool TryFinisher(out DamageResult damage);
+  ClashRoundResult Choose(string playerSkillId);   // resolve + tự finisher + tự sang vòng
   DuelSnapshot Capture(); void Restore(DuelSnapshot snapshot); void Clear();
 }
 class ClashDuel : IClashDuel { ClashDuel(GameState state); }
@@ -734,20 +729,17 @@ EnterRound(n):
 Choose(playerSkillId):
   power = ClashMath.EffectivePower(skill, bonus từ Rules)
   so với BossPower:
-    Win  → boss.Statuses.Add(WinEffect) ; AwaitingFinisher = true;
-           FinishersRemaining = max(1, FinisherCount)
+    Win  → boss.Statuses.Add(WinEffect)
+           → tự đánh max(1, FinisherCount) đòn: Damage.Apply(player → boss, ATK, NativeElement,
+             isSkill: false, ignoresArmor: false)   // giáp vẫn áp dụng, Stagger ×2
     Draw → chip = round(power × DrawChipRatio) ; Damage.Apply cả 2 bên (ignoresArmor, element None)
     Lose → Damage.Apply(player, BossPower) ; nếu LoseEffect != null → gắn cho player
   phát ClashResolvedEvent
   CheckDeaths (player chết ưu tiên trước) → nếu chết: End(...)
-  nếu chưa kết thúc → EnterRound(n+1)
-
-TryFinisher(out damage):
-  yêu cầu AwaitingFinisher && boss sống
-  lặp FinishersRemaining: Damage.Apply(player → boss, player.Definition.Attack, NativeElement,
-                                        isSkill: false, ignoresArmor: false)   // giáp vẫn áp dụng
-  hết finisher → AwaitingFinisher = false → EnterRound(kế)
+  nếu chưa kết thúc → EnterRound(n+1)     // tự end turn, không có cửa sổ finisher thủ công
 ```
+
+`Attack` trong Duel bị `ValidateDuel` chặn (`WrongPhase`) — không có API `TryFinisher` nữa.
 
 ### 9.3 Kết thúc
 
@@ -757,7 +749,7 @@ TryFinisher(out damage):
 
 ### 9.4 Snapshot
 
-`DuelSnapshot` lưu: `DuelId, Round, BossSkillIndex, BossSkillId, BossPower, BossElement, AwaitingFinisher, FinishersRemaining, LastResult, IsOver, Winner, SeenBossSkills`.
+`DuelSnapshot` lưu: `DuelId, Round, BossSkillIndex, BossSkillId, BossPower, BossElement, LastResult, IsOver, Winner, SeenBossSkills`.
 `GameSnapshot.Duel` có thể `null` (chưa vào Duel); `SnapshotService.Capture/Restore` truyền và khôi phục nó. `GameSnapshot.ContentEquals` so cả Duel.
 
 ---
@@ -1078,11 +1070,7 @@ if (session.State.Turn.Phase == TurnPhase.Duel) {
     var option = options.First(o => o.Prediction.Result == ClashResult.Win);
 
     var round = session.TryExecute(ActionRequest.ClashSkill(heroId, option.SkillId));
-    // Win → boss Stagger, AwaitingFinisher = true
-
-    if (session.State.Duel.State.AwaitingFinisher) {
-        session.TryExecute(ActionRequest.Attack(heroId, session.State.Units.Boss.Position));
-    }
+    // Win → boss Stagger + finisher tự động, đã sang vòng kế; KHÔNG gửi Attack nữa
 }
 ```
 
@@ -1115,7 +1103,7 @@ if (session.State.Snapshots.CanRewind) {
 | Damage | `max(1, round(max(1, base×hệ−giáp) × status))` | `CombatMath` |
 | Clash bonus | cặp chiêu → cặp hệ → 3 | `ClashRuleTable` |
 | Duel Draw | 10% power mỗi bên | `DuelDefinition.DrawChipRatio` |
-| Duel finisher | 1 đòn ATK × status | `DuelDefinition.FinisherCount` + `ClashDuel.TryFinisher` |
+| Duel finisher | tự động `FinisherCount` đòn ATK × status | `DuelDefinition.FinisherCount` + `ClashDuel.Choose` |
 | Timeout snapshot | ring 8 | `SnapshotStore` |
 
 ---
@@ -1164,7 +1152,7 @@ if (session.State.Snapshots.CanRewind) {
 | 6 | `DamageEffect(UnitId.None, ...)` tưởng là AoE | Nó đánh vào `ctx.Target`; AoE phải lặp `UnitsIn(cells)` |
 | 7 | `UnitRegistry.Add/MoveTo` ném `InvalidOperationException` | Luôn `CanPlace` trước, hoặc coi chỗ đặt không hợp lệ là lỗi UI |
 | 8 | `Player`/`Boss` null | `IUnitRegistry.Player/Boss` có thể null; kiểm tra trước khi dùng |
-| 9 | Duel: quên `AwaitingFinisher` | Sau Win phải gửi `Attack`; validator sẽ trả `WrongPhase` nếu sai |
+| 9 | Trong Duel lại gửi `Attack` | Finisher **tự động** sau Win; `ValidateDuel` chặn Attack bằng `WrongPhase` |
 | 10 | Tưởng `EndTurn` qua `TryExecute` chạy AI | Nó chỉ `Turn.EndTurn`; `GameSession.EndTurn()` mới chạy pha Enemy |
 | 11 | Sửa state từ UI (gán HP/position) | Không có setter public; mọi thay đổi qua `TryExecute`/effect |
 
@@ -1192,7 +1180,7 @@ if (session.State.Snapshots.CanRewind) {
 Select-String -Path "D:\test\_core_check\results.xml" -Pattern "<test-run"
 ```
 
-Kết quả hiện tại: **56/56 pass** (9 bộ), `dotnet` ~306 ms; Unity EditMode cũng 56/56.
+Kết quả hiện tại: **64/64 pass** (10 bộ), `dotnet` ~155 ms; Unity EditMode cũng 64/64.
 
 ---
 
@@ -1235,7 +1223,7 @@ Kết quả hiện tại: **56/56 pass** (9 bộ), `dotnet` ~306 ms; Unity EditM
 - [ ] `BoardView`/`UnitView`/`BoardHighlighter` đọc event + `IGameStateView`
 - [ ] `InputController` → `ActionRequest` (phím mũi tên/G/S/D/E/Space + chuột)
 - [ ] `HudPresenter` (HP pips, AP, MP trang trí), command bar
-- [ ] `DuelScreenPresenter` (background, 2 bên, 3 thẻ + badge xanh/vàng/đỏ, finisher)
+- [ ] `DuelScreenPresenter` (background, 2 bên, 3 thẻ + badge xanh/vàng/đỏ, finisher tự động)
 - [ ] Dialogue view + 2 ending; menu/settings/audio
 - [ ] PlayMode smoke test: vào scene → đi 1 ô → đánh → EndTurn không lỗi
 
