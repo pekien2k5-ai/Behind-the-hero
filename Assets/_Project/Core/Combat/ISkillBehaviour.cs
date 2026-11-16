@@ -6,6 +6,9 @@ namespace BTH.Core.Combat
     /// </summary>
     public interface ISkillBehaviour
     {
+        /// <summary>Uy lực mặc định để SkillCatalog chép vào SkillDefinition.BoardPower.</summary>
+        int DefaultPower { get; }
+
         void BuildEffects(EffectContext ctx);
     }
 }

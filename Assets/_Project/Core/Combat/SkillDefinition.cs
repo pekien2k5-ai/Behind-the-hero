@@ -15,7 +15,14 @@ namespace BTH.Core.Combat
 
         public int RangeMax { get; set; } = 1;
 
+        /// <summary>Uy lực Clash (so power với boss trong Duel).</summary>
         public int Power { get; set; }
+
+        /// <summary>
+        /// Sát thương gây trên bàn cờ. 0 = behaviour tự quyết định (dùng fallback của behaviour).
+        /// Đây là nguồn duy nhất cho sát thương board — behaviour đọc lại từ đây.
+        /// </summary>
+        public int BoardPower { get; set; }
 
         public ElementId Element { get; set; } = ElementId.None;
 
