@@ -134,5 +134,58 @@ namespace BTH.Core.Tests
             Assert.That(result.Success, Is.True, result.Message);
             Assert.That(session.State.Result, Is.EqualTo(StageResult.DefeatPlayerDead));
         }
+
+        [Test]
+        public void Rewind_AfterEndTurn_ReturnsToPlayablePlayerPhase()
+        {
+            var session = StartSession(BasicStage());
+            session.EndTurn();
+            Assert.That(session.State.Turn.Phase, Is.EqualTo(TurnPhase.Player));
+
+            session.State.Snapshots.Rewind();
+
+            Assert.That(session.State.Turn.Phase, Is.EqualTo(TurnPhase.Player),
+                "Rewind phải trả về phase Player, không phải TurnEnd/Telegraph.");
+            Assert.That(session.State.Turn.TurnIndex, Is.EqualTo(2));
+            var player = session.State.Units.Player;
+            var result = session.TryExecute(ActionRequest.Move(player.Id, new GridCoord(1, 0)));
+            Assert.That(result.Success, Is.True, result.Message);
+        }
+
+        [Test]
+        public void Rewind_AfterStartStage_ReturnsToPlayablePlayerPhase()
+        {
+            var session = StartSession(BasicStage());
+
+            session.State.Snapshots.Rewind();
+
+            Assert.That(session.State.Turn.Phase, Is.EqualTo(TurnPhase.Player));
+            var player = session.State.Units.Player;
+            var result = session.TryExecute(ActionRequest.Move(player.Id, new GridCoord(1, 0)));
+            Assert.That(result.Success, Is.True, result.Message);
+        }
+
+        [Test]
+        public void Attack_MultiCellBoss_FromAdjacentCell_IsInRange()
+        {
+            var stage = TestWorld.Stage();
+            stage.Player = TestWorld.Unit("hero", UnitFaction.Player, hp: 12, attack: 4);
+            stage.PlayerSpawn = new GridCoord(4, 5);
+            var boss = TestWorld.Boss("malkor", hp: 20, sizeX: 2, sizeY: 2);
+            stage.Spawns.Add(new UnitSpawnDefinition(boss, new GridCoord(3, 3)));
+            stage.BossId = "malkor";
+            var session = StartSession(stage);
+            var player = session.State.Units.Player;
+
+            var validator = new ActionValidator(session.State.Pathfinder);
+            var targets = validator.GetValidTargets(ActionRequest.Attack(player.Id, GridCoord.None),
+                session.State);
+            var result = session.TryExecute(ActionRequest.Attack(player.Id, new GridCoord(4, 4)));
+
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(session.State.Units.Boss.Hp, Is.EqualTo(16));
+            Assert.That(System.Linq.Enumerable.Contains(targets, new GridCoord(4, 4)), Is.True,
+                "Gợi ý mục tiêu phải có ô sát footprint của boss 2×2.");
+        }
     }
 }

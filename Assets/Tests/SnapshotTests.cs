@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using BTH.Core.Ai;
 using BTH.Core.Combat;
 using BTH.Core.Grid;
 using BTH.Core.Run;
@@ -106,6 +108,53 @@ namespace BTH.Core.Tests
             Assert.That(store.TryGetLatest(out var latest), Is.True);
             Assert.That(latest, Is.Not.Null);
             Assert.That(state.Grid.Width, Is.EqualTo(8));
+        }
+
+        [Test]
+        public void Restore_DoesNotLeaveDeadUnitOccupyingCell()
+        {
+            var state = TestWorld.State();
+            state.Units.Add(TestWorld.Unit("hero", UnitFaction.Player, hp: 12), new GridCoord(0, 0));
+            var enemy = state.Units.Add(TestWorld.Unit("imp", UnitFaction.Enemy, hp: 5),
+                new GridCoord(3, 3));
+            state.Units.Kill(enemy.Id);
+
+            var snapshot = state.Snapshots.Capture();
+            state.Snapshots.Restore(snapshot);
+
+            var imp = TestWorld.Unit("imp-2", UnitFaction.Enemy, hp: 5);
+            Assert.That(state.Units.Get(enemy.Id).IsAlive, Is.False);
+            Assert.That(state.Units.At(new GridCoord(3, 3)), Is.Null, "Ô phải trống sau restore.");
+            Assert.That(state.Units.CanPlace(imp, new GridCoord(3, 3)), Is.True,
+                "Xác unit chết không được chặn ô.");
+        }
+
+        [Test]
+        public void ContentEquals_DetectsDifferentTelegraphIntents()
+        {
+            var state = TestWorld.State();
+            state.Units.Add(TestWorld.Unit("hero", UnitFaction.Player), new GridCoord(0, 0));
+            var snapshot = state.Snapshots.Capture();
+
+            var intentA = new EnemyIntent(new UnitId(9), "a", new GridCoord(2, 0),
+                new List<GridCoord> { new GridCoord(2, 0) }, new List<IGameEffect>(), 10);
+            var intentB = new EnemyIntent(new UnitId(9), "b", new GridCoord(3, 0),
+                new List<GridCoord> { new GridCoord(3, 0) }, new List<IGameEffect>(), 10);
+
+            var left = WithIntents(snapshot, new[] { intentA });
+            var right = WithIntents(snapshot, new[] { intentB });
+            var same = WithIntents(snapshot, new[] { intentA });
+
+            Assert.That(left.ContentEquals(right), Is.False, "Phải phát hiện telegraph khác nhau.");
+            Assert.That(left.ContentEquals(same), Is.True);
+        }
+
+        private static GameSnapshot WithIntents(GameSnapshot snapshot,
+            IReadOnlyList<EnemyIntent> intents)
+        {
+            return new GameSnapshot(snapshot.TurnIndex, snapshot.Phase, snapshot.Result,
+                snapshot.RandomState, snapshot.Cells, snapshot.LockedCells, snapshot.Units, intents,
+                snapshot.Duel);
         }
     }
 }

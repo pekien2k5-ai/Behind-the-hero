@@ -3,7 +3,7 @@
 > Tài liệu tra cứu cho cả nhóm: **lớp `BTH.Core` đang có gì, dùng thế nào, sai chỗ nào thì sửa ở đâu.**
 > Đối tượng: người viết Content (skill/quái/màn), người viết Unity/UI, người review.
 >
-> **Trạng thái 2026-11-16:** Core + Content hoàn tất — **163 + 30 file · 65 unit test xanh** (dotnet + Unity EditMode),
+> **Trạng thái 2026-11-16:** Core + Content hoàn tất — **163 + 30 file · 75 unit test xanh** (dotnet + Unity EditMode),
 > gồm **Duel mode** cho Phase 2 với auto finisher. Unity/UI chưa có code.
 > Kiến trúc & lý do thiết kế: `KIEN_TRUC_UNITY_BEHIND_THE_HERO.md`. Luật Duel đã chốt: `QUYET_DINH.md`.
 
@@ -338,13 +338,14 @@ class TurnManager : ITurnManager { TurnManager(GameState, IInitiativePolicy = nu
       Statuses.TickTurnEnd(ctx)   // poison trừ HP, guard hết hạn; status !CanTick bị bỏ qua
       TickCooldowns()             // -1 mỗi lượt
       nếu còn sống: Statuses.TickTurnStart(ctx)   // bật CanTick cho status vừa gắn
-4. Hazard: mỗi ô hazard trong footprint (bỏ qua IgnoresHazard)
-      → HazardTriggeredEvent → Damage.Apply(..., ignoresArmor: true)
+4. Hazard: mỗi unit **một lần/lượt**, lấy ô hazard mạnh nhất trong footprint (bỏ qua IgnoresHazard)
+      → 1 HazardTriggeredEvent → Damage.Apply(..., ignoresArmor: true)
 5. Grid.TickCollapse()            // ô nứt sập
 6. TurnIndex++ + TurnAdvancedEvent
 7. ObjectiveEvaluator.Evaluate
 8. Nếu kết thúc → FinishStage(result)
-9. Ngược lại → ResetActionPoints() → PushCheckpoint(TurnStart) → BeginTelegraph()
+9. Ngược lại → ResetActionPoints() → BeginTelegraph()
+   (GameSession sau đó: PlanEnemyIntents → BeginPlayerPhase → PushCheckpoint(TurnStart))
 ```
 
 `GameSession.EndTurn()` (dùng cho gameplay) mới là bên chạy thêm pha Enemy và công bố telegraph cho lượt kế:
@@ -392,7 +393,7 @@ struct ActionResult     { bool Success; ActionError Error; string Message; Ok()/
 | Kind | Điều kiện chính | Tác dụng | Event |
 |------|-----------------|----------|-------|
 | `Move` | pha Player, !Rooted, !AlreadyMoved, AP ≥ 1, path Found | `TrySpend(1)`, `Units.MoveTo`, `HasMovedThisTurn = true` | `UnitMovedEvent(unit, from, to, cost)` + `UnitActedEvent` |
-| `Attack` | pha Player, !AlreadyActed, AP ≥ 1, target địch kề (Manhattan Center ≤ 1) | `DamageEffect(ATK, NativeElement)` → `EffectQueue.Run`, `TrySpend(1)`, `HasActed` | `UnitActedEvent` (+ `DamageDealt/UnitDied`) |
+| `Attack` | pha Player, !AlreadyActed, AP ≥ 1, target địch kề (khoảng cách footprint ≤ 1) | `DamageEffect(ATK, NativeElement)` → `EffectQueue.Run`, `TrySpend(1)`, `HasActed` | `UnitActedEvent` (+ `DamageDealt/UnitDied`) |
 | `Skill` | pha Player, sở hữu skill, cooldown 0, AP ≥ `ApCost`, target hợp lệ | `TrySpend(ApCost)`, `SetCooldown`, `Behaviour.BuildEffects` hoặc damage mặc định | `SkillUsedEvent` + `UnitActedEvent` |
 | `Guard` | pha Player, !AlreadyActed, AP ≥ 1 | thêm `GuardStatus` (−80% damage) | `UnitActedEvent` |
 | `ClashSkill` | pha Clash (hoặc Duel → nhánh riêng) | Clash pha 1: `state.Clash.Resolve` | `ClashResolvedEvent` |
@@ -415,7 +416,7 @@ Chung:
 4. `EndTurn` chỉ khi pha Player (ngoài Duel); `ClashSkill` pha 1 chỉ khi pha Clash + có `state.Clash` + skill `IsClashSkill`.
 5. Các kind khác: phải pha Player; unit `IsStaggered` → `ActorStunned`.
 6. `Move`: `IsRooted` → `CannotMoveRooted`; `HasMovedThisTurn` → `AlreadyMoved`; AP; `InBounds` → `OutOfRange`; ô chặn (trừ bay hợp lệ) → `CellBlocked`; A* path: `OutOfRange` → `NotEnoughMovePoints`, còn lại → `CellBlocked`.
-7. `Attack`: `HasActed` → `AlreadyActed`; AP; `At(cell)` null → `TargetEmpty`; cùng faction → `InvalidTarget`; `Manhattan(Center, Center) > 1` → `OutOfRange`.
+7. `Attack`: `HasActed` → `AlreadyActed`; AP; `At(cell)` null → `TargetEmpty`; cùng faction → `InvalidTarget`; khoảng cách **footprint** > 1 → `OutOfRange`.
 8. `Skill`: `HasActed`; skill không tồn tại → `SkillNotReady`; không sở hữu → `SkillNotReady`; cooldown > 0 → `SkillOnCooldown`; AP; target:
    - `Targeting.Self` yêu cầu `TargetCell == Position`;
    - ngoài lưới → `OutOfRange`;
@@ -746,12 +747,12 @@ Choose(playerSkillId):
 
 - Boss chết → `Duel.End(ClashResult.Win, winner: player)` → `DuelEndedEvent` → `ObjectiveEvaluator` → `Victory` → `FinishStage` → `StageEndedEvent`.
 - Player chết → `DefeatPlayerDead`.
-- `RoundLimit > 0` và vượt → `End(None, Draw)`; UI tự quyết định ý nghĩa hoà (hiện chưa dùng mặc định).
+- `RoundLimit > 0` và vượt → `End(None, Draw)` + `FinishStage(DefeatTurnLimit)` (thua theo lượt, không soft-lock); mặc định 0 = không giới hạn.
 
 ### 9.4 Snapshot
 
 `DuelSnapshot` lưu: `DuelId, Round, BossSkillIndex, BossSkillId, BossPower, BossElement, LastResult, IsOver, Winner, SeenBossSkills`.
-`GameSnapshot.Duel` có thể `null` (chưa vào Duel); `SnapshotService.Capture/Restore` truyền và khôi phục nó. `GameSnapshot.ContentEquals` so cả Duel.
+`GameSnapshot.Duel` có thể `null` (chưa vào Duel); `SnapshotService.Capture/Restore` truyền và khôi phục nó. `GameSnapshot.ContentEquals` so cả Duel, `Intents` (telegraph) và toàn bộ cell/unit.
 
 ---
 
@@ -936,7 +937,7 @@ class SnapshotService : ISnapshotService { SnapshotService(GameState state, ISna
 7. `Result = snapshot.Result`
 8. `TurnManager.RestoreState(TurnIndex, Phase)`
 
-`PushCheckpoint(trigger)` lưu snapshot + `SnapshotPushedEvent`; `Rewind()` lấy checkpoint gần nhất, `Restore`, phát `RewindPerformedEvent(trigger, TurnIndex)`.
+`PushCheckpoint(trigger)` lưu snapshot + `SnapshotPushedEvent`; checkpoint `StageStart`/`TurnStart` do **GameSession** đẩy sau `BeginPlayerPhase` (Phase Player, telegraph đã công bố), `ClashStart` do `TurnManager.BeginClash`. `Rewind()` lấy checkpoint gần nhất, `Restore`, phát `RewindPerformedEvent(trigger, TurnIndex)`.
 
 ### 11.6 `RunKnowledge`
 
@@ -1078,7 +1079,7 @@ if (session.State.Turn.Phase == TurnPhase.Duel) {
 ### 13.3 Snapshot & rewind
 
 ```csharp
-session.State.Snapshots.PushCheckpoint(SnapshotTrigger.TurnStart); // thường TurnManager tự đẩy
+session.State.Snapshots.PushCheckpoint(SnapshotTrigger.TurnStart); // GameSession đẩy sau BeginPlayerPhase
 // ... đánh nhau, chết
 if (session.State.Snapshots.CanRewind) {
     session.State.Snapshots.Rewind();   // phát RewindPerformedEvent, khôi phục Duel/telegraph/RNG
@@ -1093,7 +1094,7 @@ if (session.State.Snapshots.CanRewind) {
 |----------|---------|-----|
 | AP/lượt | 2 (1 Move + 1 Action) | `GameRules.ApPerTurn` |
 | Move | 2 ô, 4 hướng, không chéo | `MoveProfile` + `AStarPathfinder` |
-| Melee | Manhattan ≤ 1 (theo `Center`) | `ActionValidator` |
+| Melee | khoảng cách footprint ≤ 1 | `ActionValidator` |
 | Ranged | 2–3, cần LOS | `SkillDefinition.RangeMin/Max` + `RequiresLineOfSight` |
 | Turn limit | 25 mặc định (20–25/thiết kế) | `GameRules.TurnLimit` / `StageDefinition.TurnLimit` |
 | Phase 2 | `HpRatio < 0.70` | `GameRules.Phase2Threshold` |
@@ -1181,7 +1182,7 @@ if (session.State.Snapshots.CanRewind) {
 Select-String -Path "D:\test\_core_check\results.xml" -Pattern "<test-run"
 ```
 
-Kết quả hiện tại: **65/65 pass** (10 bộ), `dotnet` ~155 ms; Unity EditMode cũng 65/65.
+Kết quả hiện tại: **75/75 pass** (10 bộ), `dotnet` ~155 ms; Unity EditMode cũng 75/75.
 
 ---
 

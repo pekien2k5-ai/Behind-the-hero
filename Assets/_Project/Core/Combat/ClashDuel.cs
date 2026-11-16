@@ -307,6 +307,12 @@ namespace BTH.Core.Combat
             if (_definition.RoundLimit > 0 && round > _definition.RoundLimit)
             {
                 End(UnitId.None, ClashResult.Draw);
+                // Hết round limit = thua theo giới hạn lượt; tránh kẹt IsOver mà stage chưa kết thúc.
+                if (_state.Result == StageResult.None)
+                {
+                    _state.Turn.FinishStage(StageResult.DefeatTurnLimit);
+                }
+
                 return;
             }
 
@@ -360,7 +366,7 @@ namespace BTH.Core.Combat
         {
             if (_definition.Rules == null || _duel == null)
             {
-                return 3; // ClashRuleTable mặc định cộng 3 khi không có bảng luật riêng.
+                return ClashRuleTable.FallbackBonus;
             }
 
             return _definition.Rules.GetBonus(skill.Id, _duel.BossSkillId, skill.Element, _duel.BossElement);
@@ -373,7 +379,7 @@ namespace BTH.Core.Combat
                 return 0;
             }
 
-            return (int)Math.Round(power * _definition.DrawChipRatio);
+            return (int)Math.Round(power * _definition.DrawChipRatio, MidpointRounding.AwayFromZero);
         }
 
         private int ApplyDirectDamage(UnitState source, UnitState target, int amount)

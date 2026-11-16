@@ -112,5 +112,20 @@ namespace BTH.Core.Tests
             Assert.That(state.Turn.NextEnemy(), Is.EqualTo(enemy.Id));
             Assert.That(state.Turn.NextEnemy(), Is.EqualTo(UnitId.None));
         }
+
+        [Test]
+        public void Hazard_AppliesOncePerUnit_UsingStrongestCell()
+        {
+            var state = TestWorld.State();
+            var player = state.Units.Add(
+                TestWorld.Unit("hero", UnitFaction.Player, hp: 12, sizeX: 2, sizeY: 1),
+                new GridCoord(1, 1));
+            state.Grid.SetTerrain(new GridCoord(1, 1), TerrainId.Poison, TerrainFlags.IsHazard, 1, 1);
+            state.Grid.SetTerrain(new GridCoord(2, 1), TerrainId.Lava, TerrainFlags.IsHazard, 1, 2);
+
+            state.Turn.EndTurn();
+
+            Assert.That(player.Hp, Is.EqualTo(10), "Chỉ ăn hazard mạnh nhất (2), không cộng dồn 1+2.");
+        }
     }
 }

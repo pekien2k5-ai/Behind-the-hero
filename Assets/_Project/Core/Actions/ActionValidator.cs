@@ -206,7 +206,7 @@ namespace BTH.Core.Actions
                 return ValidationResult.Fail(ActionError.InvalidTarget, "Không đánh đồng minh");
             }
 
-            if (Manhattan(actor.Center, target.Center) > 1)
+            if (DistanceBetween(actor, target) > 1)
             {
                 return ValidationResult.Fail(ActionError.OutOfRange, "Ngoài tầm đánh");
             }
@@ -270,7 +270,11 @@ namespace BTH.Core.Actions
                 return ValidationResult.Fail(ActionError.TargetEmpty, "Ô mục tiêu trống");
             }
 
-            int distance = Manhattan(actor.Center, cell);
+            // Khoảng cách tính theo footprint: unit 2×2 có nhiều ô, lấy ô gần mục tiêu nhất.
+            // Unit-target dùng khoảng cách giữa 2 footprint (click ô nào của boss cũng hợp lệ).
+            int distance = skill.Targeting == SkillTargeting.Unit && target != null
+                ? DistanceBetween(actor, target)
+                : DistanceToCell(actor, cell);
             if (distance < skill.RangeMin || distance > skill.RangeMax)
             {
                 return ValidationResult.Fail(ActionError.OutOfRange, "Ngoài tầm chiêu");
@@ -336,18 +340,23 @@ namespace BTH.Core.Actions
         private IReadOnlyList<GridCoord> AttackTargets(UnitState actor, GameState state)
         {
             var result = new List<GridCoord>();
-            var neighbours = GridShapes.Neighbours4(actor.Center);
-            for (int i = 0; i < neighbours.Count; i++)
+            var actorCells = actor.Footprint;
+            for (int c = 0; c < actorCells.Count; c++)
             {
-                if (!state.Grid.InBounds(neighbours[i]))
+                var neighbours = GridShapes.Neighbours4(actorCells[c]);
+                for (int i = 0; i < neighbours.Count; i++)
                 {
-                    continue;
-                }
+                    var cell = neighbours[i];
+                    if (!state.Grid.InBounds(cell) || result.Contains(cell))
+                    {
+                        continue;
+                    }
 
-                var unit = state.Units.At(neighbours[i]);
-                if (unit != null && unit.IsAlive && unit.Faction != actor.Faction)
-                {
-                    result.Add(neighbours[i]);
+                    var unit = state.Units.At(cell);
+                    if (unit != null && unit.IsAlive && unit.Faction != actor.Faction)
+                    {
+                        result.Add(cell);
+                    }
                 }
             }
 
@@ -460,6 +469,44 @@ namespace BTH.Core.Actions
         private static int Manhattan(GridCoord a, GridCoord b)
         {
             return Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);
+        }
+
+        /// <summary>Khoảng cách ngắn nhất từ footprint của actor tới một ô.</summary>
+        private static int DistanceToCell(UnitState actor, GridCoord cell)
+        {
+            var cells = actor.Footprint;
+            int best = int.MaxValue;
+            for (int i = 0; i < cells.Count; i++)
+            {
+                int distance = Manhattan(cells[i], cell);
+                if (distance < best)
+                {
+                    best = distance;
+                }
+            }
+
+            return best == int.MaxValue ? 0 : best;
+        }
+
+        /// <summary>Khoảng cách ngắn nhất giữa 2 footprint (0 nếu chồng ô).</summary>
+        private static int DistanceBetween(UnitState a, UnitState b)
+        {
+            var aCells = a.Footprint;
+            var bCells = b.Footprint;
+            int best = int.MaxValue;
+            for (int i = 0; i < aCells.Count; i++)
+            {
+                for (int j = 0; j < bCells.Count; j++)
+                {
+                    int distance = Manhattan(aCells[i], bCells[j]);
+                    if (distance < best)
+                    {
+                        best = distance;
+                    }
+                }
+            }
+
+            return best == int.MaxValue ? 0 : best;
         }
 
         private static bool CanFlyOver(UnitState actor, GameState state, GridCoord cell)

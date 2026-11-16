@@ -34,12 +34,15 @@ Mỗi round Duel kết thúc bằng bước **tick status 2 bên** giống EndTu
 | 12 | Protect vs Blade Guard | Là cùng một chiêu; id `blade-guard`, hiển thị "Blade Guard". Guard thường trên bàn cờ vẫn là `ActionKind.Guard` |
 | 13 | Phase 1 màn boss | Solo 1v1, **chỉ boss**, không Imp/Gargoyle |
 | 14 | Transition | 1 prefab dùng chung, 1,2 s, không cho skip lần đầu; 5 background riêng |
+| 15 | RoundLimit (tuỳ chọn) | `0` = không giới hạn; nếu bật, vượt limit → thua `DefeatTurnLimit` (không soft-lock) |
 | 20 | 2 ending | Lựa chọn dialogue ở cuối ải 5 (A: buông gươm; B: quyết chiến), không phụ thuộc chỉ số |
 
 ## 4. Ngoài Duel
 
 - Eosphoros đồng minh: **cắt khỏi gameplay** (docx quy định solo 1v1); chỉ xuất hiện trong cutscene/dialogue ải 5.
-- Rewind: về `StageStart` / `TurnStart` / `ClashStart` (đầu Duel); `RunKnowledge` giữ qua rewind.
+- Rewind: về `StageStart` / `TurnStart` / `ClashStart` (đầu Duel); `RunKnowledge` giữ qua rewind. Checkpoint `StageStart`/`TurnStart` được đẩy **sau khi vào pha Player** (đã công bố telegraph), nên rewind luôn trả về lượt chơi được.
+- Hazard trên bàn cờ: mỗi unit chỉ ăn **một lần mỗi lượt**, lấy ô có `HazardDamagePerTurn` cao nhất trong footprint (không cộng dồn theo số ô).
+- Tầm đánh/tầm chiêu tính theo **khoảng cách footprint** (min Manhattan giữa các ô), không dùng `Center` — để boss 2×2 (Malkor) bị đánh từ mọi ô kề.
 - Không save giữa run (ADR-05).
 - MP trên HUD là trang trí.
 

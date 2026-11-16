@@ -109,5 +109,13 @@ namespace BTH.Core.Tests
             Assert.That(target.Hp, Is.EqualTo(0));
             Assert.That(died, Is.EqualTo(1));
         }
+
+        [Test]
+        public void ComputePower_RoundsHalfAwayFromZero()
+        {
+            Assert.That(CombatMath.ComputePower(5, 0, 0.5f, true, 1f), Is.EqualTo(3),
+                "2.5 phải làm tròn lên 3, không phải banker's 2.");
+            Assert.That(CombatMath.ComputePower(5, 0, 0.7f, true, 1f), Is.EqualTo(4));
+        }
     }
 }

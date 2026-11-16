@@ -214,6 +214,43 @@ namespace BTH.Core.Tests
                 Is.EqualTo(3), "Không khớp cặp chiêu/hệ nào thì cộng mặc định 3.");
         }
 
+        [Test]
+        public void Snapshot_SeenBossSkills_DoesNotMutateCapturedCheckpoint()
+        {
+            var session = CreateDuelSession(Duel());
+            EnterDuel(session);
+            var hero = session.State.Units.Player;
+            var duel = session.State.Duel;
+
+            var captured = duel.Capture();
+            Assert.That(captured.SeenBossSkills.Count, Is.EqualTo(1));
+
+            session.TryExecute(ActionRequest.ClashSkill(hero.Id, "burst")); // Draw → sang vòng 2
+
+            Assert.That(duel.State.SeenBossSkills.Count, Is.EqualTo(2));
+            Assert.That(captured.SeenBossSkills.Count, Is.EqualTo(1),
+                "Checkpoint cũ không được bị cộng thêm chiêu mới.");
+        }
+
+        [Test]
+        public void RoundLimit_Exceeded_EndsStageAsDefeat()
+        {
+            var duel = Duel();
+            duel.RoundLimit = 1;
+            duel.BossPower = 13; // heavy 13 vs 13 → Draw, rồi vượt round limit
+            var session = CreateDuelSession(duel);
+            EnterDuel(session);
+            var hero = session.State.Units.Player;
+
+            ActionResult result = session.TryExecute(ActionRequest.ClashSkill(hero.Id, "heavy"));
+
+            Assert.That(result.Success, Is.True, result.Message);
+            Assert.That(session.State.Duel.State.IsOver, Is.True);
+            Assert.That(session.State.Result, Is.EqualTo(StageResult.DefeatTurnLimit));
+            Assert.That(session.State.Turn.Phase, Is.EqualTo(TurnPhase.StageEnded),
+                "Không được kẹt IsOver mà stage chưa kết thúc.");
+        }
+
         private static void EnterDuel(GameSession session)
         {
             var boss = session.State.Units.Boss;

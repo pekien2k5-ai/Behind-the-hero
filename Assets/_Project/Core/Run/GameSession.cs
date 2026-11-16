@@ -173,6 +173,8 @@ namespace BTH.Core.Run
 
             PlanEnemyIntents(State);
             State.Turn.BeginPlayerPhase();
+            // TurnStart checkpoint ở phase Player + telegraph mới → rewind luôn hành động được.
+            State.Snapshots.PushCheckpoint(SnapshotTrigger.TurnStart);
             return ActionResult.Ok();
         }
 
@@ -212,9 +214,11 @@ namespace BTH.Core.Run
             _executor = new GameActionExecutor(new ActionValidator(state.Pathfinder), _objective);
 
             state.Turn.StartStage(stage);
-            state.Snapshots.PushCheckpoint(SnapshotTrigger.StageStart);
             PlanEnemyIntents(state);
             state.Turn.BeginPlayerPhase();
+            // Checkpoint StageStart phải ở phase Player (đã có telegraph) để rewind
+            // trả về đúng thời điểm người chơi còn ra lệnh được.
+            state.Snapshots.PushCheckpoint(SnapshotTrigger.StageStart);
             return state;
         }
 

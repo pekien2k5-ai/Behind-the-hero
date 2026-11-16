@@ -23,7 +23,9 @@ namespace BTH.Core.Run
             LastResult = lastResult;
             IsOver = isOver;
             Winner = winner;
-            SeenBossSkills = seenBossSkills ?? new List<string>();
+            SeenBossSkills = seenBossSkills == null
+                ? new List<string>()
+                : new List<string>(seenBossSkills);
         }
 
         public string DuelId { get; }

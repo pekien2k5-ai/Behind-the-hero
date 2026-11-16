@@ -1,6 +1,6 @@
 # KẾ HOẠCH HOÀN THÀNH GAME — "Behind the Hero"
 
-> Lập 2026-11-15, cập nhật 2026-11-16 sau khi **P1 Content hoàn tất** (30 file, 65 test xanh cả dotnet và Unity) — xem `Docs/QUYET_DINH.md`, `Docs/THIET_KE_PHASE2_DUEL.md`.
+> Lập 2026-11-15, cập nhật 2026-11-16 sau khi **P1 Content hoàn tất** (30 file, 75 test xanh cả dotnet và Unity) — xem `Docs/QUYET_DINH.md`, `Docs/THIET_KE_PHASE2_DUEL.md`.
 > Căn cứ: `KIEN_TRUC_UNITY_BEHIND_THE_HERO.md`, tài liệu thiết kế nhóm 10, trạng thái code thực tế của repo `Behind-the-hero`.
 > Ước lượng theo **ngày công 6–8 giờ**, một người làm code + agent hỗ trợ; art dùng lại bộ có sẵn.
 
@@ -11,8 +11,8 @@
 | Hạng mục | Trạng thái |
 |---|---|
 | **Core** `Assets/_Project/Core` | ✅ **163 file**, 6.608 dòng. Grid, Units, Turn, Actions, Combat (skill/effect/status/clash/**duel**), Ai, Run (rules/stage/snapshot/event/dialogue/session) |
-| **Duel mode (Phase 2)** | ✅ **đã có trong Core**: `TurnPhase.Duel`, `ClashDuel`/`DuelState`/`IClashDuel`, `EnterDuel` khi boss <70%, finisher, `DuelSnapshot`, 2 event Duel; route validator/executor/snapshot xong; 11 test Duel. Còn nối transition + UI (P2/P3) |
-| **Test** `Assets/Tests` | ✅ **65 test / 10 bộ**, xanh `dotnet test` (~140 ms) và **Unity EditMode 65/65** (2026-11-16) |
+| **Duel mode (Phase 2)** | ✅ **đã có trong Core**: `TurnPhase.Duel`, `ClashDuel`/`DuelState`/`IClashDuel`, `EnterDuel` khi boss <70%, finisher, `DuelSnapshot`, 2 event Duel; route validator/executor/snapshot xong; 13 test Duel. Còn nối transition + UI (P2/P3) |
+| **Test** `Assets/Tests` | ✅ **75 test / 10 bộ**, xanh `dotnet test` (~140 ms) và **Unity EditMode 75/75** (2026-11-16) |
 | **Harness** `Tools/CoreTests` | ✅ chạy test ngoài Unity bằng .NET SDK bundled của Unity; đã include cả Content |
 | **Content** `Assets/_Project/Content` | ✅ **30 file / 2.035 dòng**: 29 chiêu + 10 behaviour, 9 unit, 8 brain, terrain, 5 màn, 5 Duel, 11 đoạn thoại, `ContentCatalog` |
 | **Unity presentation** (board, unit view, input, camera, VFX, duel screen) | ❌ chưa có |
@@ -40,7 +40,7 @@ Một bản build Windows **chơi được trọn vòng**:
 - HUD đủ: portrait, HP pips, MP (trang trí), AP, nút kỹ năng + hotkey, turn counter, banner ý đồ boss.
 - Settings: âm lượng Master/BGM/SFX, độ phân giải, fullscreen, tốc độ animation, bật/tắt grid + danger tiles; lưu qua lần chạy sau.
 - 60 FPS ở 1920×1080; không lỗi console; build chạy trên máy **không cài Unity**.
-- `dotnet test` xanh (65 test Core + Content + Duel) và Unity EditMode 65/65; README hướng dẫn chạy + điều khiển.
+- `dotnet test` xanh (75 test Core + Content + Duel) và Unity EditMode 75/75; README hướng dẫn chạy + điều khiển.
 
 **Ngoài phạm vi** (trừ khi bạn yêu cầu): WebGL, save giữa run (ADR-05: không), multiplayer, localization tiếng Anh, mobile.
 
@@ -50,7 +50,7 @@ Một bản build Windows **chơi được trọn vòng**:
 
 ```
 Assets/_Project/
-  Core/            ✅ xong (kể cả Duel mode + 65 test)
+  Core/            ✅ xong (kể cả Duel mode + 75 test)
   Content/         ✅ xong (30 file): data + behaviour, asmdef refs Core, KHÔNG refs UnityEngine
     Units/  Skills/  Skills/Behaviours/  Effects/  Brains/  Terrain/  Stages/  Duels/  Dialogues/
   Game/            ← P2: Unity presentation, refs Core+Content+InputSystem
@@ -86,7 +86,7 @@ Scene: **1 scene `Game.unity`** gồm `Bootstrap`, `BoardRoot`, `UnitRoot`, `FxR
 
 ---
 
-### P1 — Content layer ✅ **XONG 2026-11-16** (30 file / 2.035 dòng, 65 test xanh)
+### P1 — Content layer ✅ **XONG 2026-11-16** (30 file / 2.035 dòng, 75 test xanh)
 
 | # | Việc | Kết quả |
 |---|---|---|
@@ -98,9 +98,9 @@ Scene: **1 scene `Game.unity`** gồm `Bootstrap`, `BoardRoot`, `UnitRoot`, `FxR
 | 1.6 | 5 `StageDefinition`: 8×8 / 9×9 / 9×9 / 10×10 / 8×8, TurnLimit 20–25, terrain override | ✅ `Content/Stages/StageCatalog.cs` |
 | 1.7 | `DuelCatalog`: 5 `DuelDefinition`, boss power 15/14/16/18/18, 2 Win + 1 Lose/Draw mỗi ải | ✅ `Content/Duels/DuelCatalog.cs` |
 | 1.8 | Dialogue trước/sau trận + 2 ending | ✅ `Content/Dialogues/DialogueCatalog.cs` (11 graph) |
-| 1.9 | Test Content: catalog, behaviour, ma trận Duel, chơi ải 1 → Duel → Victory | ✅ `Assets/Tests/ContentTests.cs` (7 ca, tổng 65) |
+| 1.9 | Test Content: catalog, behaviour, ma trận Duel, chơi ải 1 → Duel → Victory | ✅ `Assets/Tests/ContentTests.cs` (8 ca, tổng 75) |
 
-**Nghiệm thu:** ✅ `dotnet test` 65/65; Unity EditMode 65/65; `Stage1_CanBePlayedFromBoardToDuelVictory_WithoutUnity` chạy trọn ải 1 → Duel → thắng, không cần Unity.
+**Nghiệm thu:** ✅ `dotnet test` 75/75; Unity EditMode 75/75; `Stage1_CanBePlayedFromBoardToDuelVictory_WithoutUnity` chạy trọn ải 1 → Duel → thắng, không cần Unity.
 
 > Pha này **làm hoàn toàn bằng code + test**, không cần Editor. Làm xong là đã có "game chạy được bằng test", kể cả Duel.
 
@@ -143,7 +143,7 @@ Scene: **1 scene `Game.unity`** gồm `Bootstrap`, `BoardRoot`, `UnitRoot`, `FxR
 
 | # | Việc | Ghi chú |
 |---|---|---|
-| 4.1 | ✅ **Core Duel mode** đã xong: `TurnPhase.Duel`, `ClashDuel`/`DuelState`/`IClashDuel`, `ClashMath`, `EnterDuel()` khi HP boss <70%, validator/executor route, `DuelSnapshot`, `DuelRoundStartedEvent`, `DuelEndedEvent`; `ObjectiveEvaluator` bỏ turn-limit khi Duel; `DuelFlowTests` **11 ca** | xong 2026-11-15; hiện 65/65 test xanh (auto finisher) |
+| 4.1 | ✅ **Core Duel mode** đã xong: `TurnPhase.Duel`, `ClashDuel`/`DuelState`/`IClashDuel`, `ClashMath`, `EnterDuel()` khi HP boss <70%, validator/executor route, `DuelSnapshot`, `DuelRoundStartedEvent`, `DuelEndedEvent`; `ObjectiveEvaluator` bỏ turn-limit khi Duel; `DuelFlowTests` **13 ca** | xong 2026-11-15; hiện 65/75 test xanh (auto finisher) |
 | 4.2 | Nối trigger: Core đã tự gọi `TryEnterDuel` sau mỗi lệnh thành công; còn phía UI chạy transition rồi hiện Duel | `BossPhaseChangedEvent` + `ClashStartedEvent` + checkpoint ClashStart đã có |
 | 4.3 | Eosphoros ally: **đã cắt khỏi gameplay** theo `Docs/QUYET_DINH.md` (không cần AllyBrain trong run) | nếu sau này muốn thêm lại thì làm thành cột mốc riêng |
 | 4.4 | Chuỗi 5 ải: tiến trình, dialogue trước/sau, Ending A/B theo điều kiện | dùng `StageResult.EndingA/B` |
@@ -267,7 +267,7 @@ Nguyên tắc: **mỗi mốc phải demo được**, không làm "nửa chừng 
 
 | Tuần | Mốc | Demo được gì |
 |---|---|---|
-| 1 | P0 ✅ + P1 ✅ (Content 30 file, 65 test) | Ải 1 chơi trọn từ bàn cờ → Duel → Victory bằng test, không cần Unity |
+| 1 | P0 ✅ + P1 ✅ (Content 30 file, 75 test) | Ải 1 chơi trọn từ bàn cờ → Duel → Victory bằng test, không cần Unity |
 | 2 | P2 + bắt đầu P5 | Ải 1 chơi được trong Unity bằng chuột/phím, có animation cơ bản; DuelScreen khung hiện đúng lúc |
 | 3 | P3 + P5 | Chơi ải 1 trọn vẹn bằng HUD/menu + transition + Duel UI |
 | 4 | P4 + P6 | Chơi 1→5, rewind, 2 ending; build Windows đầu tiên |
@@ -278,11 +278,11 @@ Nguyên tắc: **mỗi mốc phải demo được**, không làm "nửa chừng 
 
 ## 10. Việc làm ngay (khi bạn chốt lịch §8)
 
-1. ✅ **P0 + P1 đã xong**: 4 asmdef (Core/Content/Tests), `Docs/QUYET_DINH.md`, Content 30 file (catalog/behaviour/brain/stage/duel/dialogue), **65/65 test xanh** cả `dotnet test` và Unity EditMode.
+1. ✅ **P0 + P1 đã xong**: 4 asmdef (Core/Content/Tests), `Docs/QUYET_DINH.md`, Content 30 file (catalog/behaviour/brain/stage/duel/dialogue), **65/75 test xanh** cả `dotnet test` và Unity EditMode.
 2. **P2 — Unity presentation**: `Game.unity` + `GameBootstrap` + `BoardView` (tile 1-bit) + `UnitView` (sprite sheet 128px) + `InputController` (chuột + phím) + `CameraRig`; chạy ải 1 trong Editor (P2.1–P2.7).
 3. **P3 — UI**: HUD (HP/AP/chiêu), Clash/Duel UI 3 badge, menu, settings, dialogue panel, ending (P3.1–P3.4).
 4. **P4 — flow**: nối transition, 5 ải, rewind prompt, 2 ending; PlayMode smoke.
-5. Chạy Unity EditMode 65/65 + PlayMode smoke, quay video ải 1 (gồm chuyển cảnh + Duel) làm mốc demo.
+5. Chạy Unity EditMode 75/75 + PlayMode smoke, quay video ải 1 (gồm chuyển cảnh + Duel) làm mốc demo.
 
 ---
 
@@ -295,4 +295,4 @@ Nguyên tắc: **mỗi mốc phải demo được**, không làm "nửa chừng 
 - **Vòng đấu**: boss công bố chiêu → player chọn 1/3 chiêu Clash (badge dự đoán) → Win: boss Stagger + 1 đòn kết liễu; Draw: mỗi bên chip 10%; Lose: ăn damage boss + status.
 - **HP mang theo**, status clear khi vào, turn limit không áp, rewind về đầu Duel giữ RunKnowledge.
 - **Dữ liệu**: 5 `DuelDefinition` (ải 1–5) với boss power 15/14/16/18/18 và 3 lựa chọn mỗi ải; bảng chi tiết trong spec.
-- **Ước lượng riêng**: Core Duel ✅ xong (+9 file, 11 test). Còn Content +1, UI +1,5–2, Art +1 → phần Duel còn lại ~**+3,5–4 ngày công**, đã tính vào §4.
+- **Ước lượng riêng**: Core Duel ✅ xong (+9 file, 13 test). Còn Content +1, UI +1,5–2, Art +1 → phần Duel còn lại ~**+3,5–4 ngày công**, đã tính vào §4.

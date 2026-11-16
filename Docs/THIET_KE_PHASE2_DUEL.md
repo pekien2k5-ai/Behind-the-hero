@@ -61,7 +61,7 @@ public sealed class DuelDefinition
     public List<string> BossSkillIds;    // chu kỳ 2 chiêu: tuyệt kỹ → đòn thường → lặp
     public List<string> PlayerSkillIds;  // đúng 3 lựa chọn Clash
 
-    public int RoundLimit = 0;           // 0 = không giới hạn (mặc định)
+    public int RoundLimit = 0;           // 0 = không giới hạn; nếu bật, vượt → DefeatTurnLimit
     public float DrawChipRatio = 0.10f;  // hoà: mỗi bên mất 10% uy lực của mình
     public int FinisherCount = 1;        // số nhát kết liễu tự động (ải 4 = 3)
 
@@ -153,7 +153,7 @@ Kết thúc: boss chết → Winner = player; player chết → Winner = boss; `
 | `Core/Run/Events/` | `DuelRoundStartedEvent(round, bossSkillId, bossPower)`, `DuelEndedEvent(result, winner)` |
 | `Core/Turn/TurnManager.cs` | `BeginDuel()`: Phase=Duel + checkpoint ClashStart; `EndTurn` no-op khi Duel |
 
-**Test mới `Assets/Tests/DuelFlowTests.cs` (11 ca):**
+**Test mới `Assets/Tests/DuelFlowTests.cs` (13 ca):**
 1. Boss HP < 70% → phase `Duel`, checkpoint `ClashStart`, HP giữ nguyên, status bị clear.
 2. Thắng Clash → boss Stagger + finisher tự động ×2, tự sang vòng 2 (không cần Attack).
 3. Hoà → cả 2 mất 10% uy lực.
@@ -165,6 +165,8 @@ Kết thúc: boss chết → Winner = player; player chết → Winner = boss; `
 9. Snapshot giữa Duel → Restore trùng khớp; rewind từ thua về round 1, `RunKnowledge` giữ chiêu boss đã thấy.
 10. Rule table ưu tiên cặp chiêu → cặp hệ → mặc định +3.
 11. `Attack` trong Duel trả `WrongPhase` (finisher là tự động).
+12. Snapshot `SeenBossSkills` là bản copy — checkpoint cũ không bị nhiễm chiêu boss mới.
+13. Vượt `RoundLimit` → `DefeatTurnLimit` + `StageEnded` (không soft-lock).
 
 ---
 

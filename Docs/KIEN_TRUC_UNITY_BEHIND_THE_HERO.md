@@ -3,7 +3,7 @@
 > Tài liệu kiến trúc & phân rã tính năng, dựng từ thiết kế game trong `65CNTT_Nhom10_Tai_lieu_thiet_ke.docx`
 > (Nhóm 10 – 65CNTT: Ngô Quý Kiên, Nguyễn Tuấn Kiệt, Nguyễn Xuân Lăng, Phạm Thị Huyền Linh).
 >
-> **Cập nhật 2026-11-16:** đối chiếu với code thật — `BTH.Core` (163 file) + `BTH.Content` (30 file) đã hoàn tất **65 unit test**
+> **Cập nhật 2026-11-16:** đối chiếu với code thật — `BTH.Core` (163 file) + `BTH.Content` (30 file) đã hoàn tất **75 unit test**
 > (gồm **Duel mode** cho Phase 2 với auto finisher); Unity/UI vẫn là kế hoạch. Các chỗ ghi ✅ là đã có trong code;
 > ⬜ là còn phải làm. Tài liệu API chi tiết song song: `CORE_API_TONG_HOP.md`.
 
@@ -23,7 +23,7 @@
 | 8 | Bảng số liệu | Đơn vị, ma trận Clash, bảng Duel, hằng số, 5 màn |
 | 9 | Công thức mở rộng | Thêm skill/quái/boss/màn/địa hình/duel không sửa Core |
 | 10 | Lộ trình | Đã xong gì, còn gì, DoD |
-| 11 | Kiểm thử & bảo trì | 65 test/10 bộ, lệnh chạy, checklist review, anti-pattern |
+| 11 | Kiểm thử & bảo trì | 75 test/10 bộ, lệnh chạy, checklist review, anti-pattern |
 | 12 | ADR & quyết định | 7 ADR + danh sách đã chốt |
 
 ---
@@ -169,13 +169,13 @@ Assets/Tests/
 ├── TestWorld.cs                 (helper dựng grid/registry/state/stage)
 ├── GridTests.cs                 8 test
 ├── PathfindingTests.cs          6 test
-├── TurnFlowTests.cs             5 test
-├── DamageTests.cs               6 test
+├── TurnFlowTests.cs             6 test
+├── DamageTests.cs               7 test
 ├── ClashTests.cs                7 test
 ├── AiDeterminismTests.cs        4 test
-├── SnapshotTests.cs             4 test
-├── StageObjectiveTests.cs       7 test
-└── DuelFlowTests.cs             11 test
+├── SnapshotTests.cs             6 test
+├── StageObjectiveTests.cs       10 test
+└── DuelFlowTests.cs             13 test
 ```
 
 ### 3.3 Dự kiến Content / Game / UI / Editor (chưa tạo)
@@ -271,7 +271,7 @@ TurnIndex N:
   1. Telegraph  : AI lập EnemyIntent + phát danger cells (chưa gây sát thương)
   2. Player     : người chơi dùng 2 AP (1 Move + 1 Action, thứ tự tự do)
   3. Enemy      : thi hành đúng intent đã công bố (không tính lại AI)
-  4. TurnEnd    : tick status → tick hazard/collapse → TurnIndex++ → objective → checkpoint
+  4. TurnEnd    : tick status → tick hazard/collapse → TurnIndex++ → objective → ResetActionPoints+telegraph
 ```
 
 Thi hành đúng intent đã báo là điều kiện để người chơi "tin" telegraph — và để test tự động.
@@ -297,12 +297,12 @@ Trong Duel:
 - Draw: mỗi bên mất `round(power × DrawChipRatio)` (mặc định **10%**), bỏ qua giáp.
 - Lose: người chơi nhận đúng `BossPower` + `LoseEffect`.
 - HP mang theo từ pha 1; status 2 bên được clear khi vào Duel; hết vòng thì sang vòng kế; ai chết trước thì thua.
-- `RoundLimit` > 0 là tuỳ chọn; mặc định 0 = không giới hạn vòng.
+- `RoundLimit` > 0 là tuỳ chọn; mặc định 0 = không giới hạn vòng. Vượt limit → kết thúc Duel + `FinishStage(DefeatTurnLimit)` (không soft-lock).
 
 **F10 — Snapshot, không phải replay.**
 Turn-based nên state nhỏ; chụp ảnh rẻ hơn replay (vốn đòi tất định tuyệt đối cả animation).
 `GameSnapshot` gồm cells, units, status, AP, phase, result, RNG state, intents, **DuelSnapshot**.
-Checkpoint: `StageStart` (đầu màn), `TurnStart` (mỗi lượt), `ClashStart` (khi vào Clash pha 1). `BeginDuel` hiện chỉ đổi phase, không đẩy checkpoint riêng; UI có thể tự `PushCheckpoint` trước khi gọi `EnterDuel` nếu muốn rewind về trước Duel.
+Checkpoint: `StageStart` (đầu màn), `TurnStart` (mỗi lượt), `ClashStart` (khi vào Clash pha 1). `StageStart`/`TurnStart` được **GameSession** đẩy SAU `BeginPlayerPhase()` → checkpoint luôn ở Phase Player với telegraph đã công bố, nên rewind trả về lượt chơi được. `BeginDuel` chỉ đổi phase, không đẩy checkpoint riêng; UI có thể tự `PushCheckpoint` trước khi gọi `EnterDuel` nếu muốn rewind về trước Duel.
 `Restore(Capture())` phải bằng nhau từng trường (test bắt buộc).
 
 **F11 — Thắng thua là hàm thuần.**
@@ -362,11 +362,11 @@ Presenter nghe event và set text/sprite; không đọc `UnitState` mỗi frame 
 ```
 SetPhase(TurnEnd)
 → TickUnits: mỗi unit sống: StatusSet.TickTurnEnd → TickCooldowns → nếu còn sống TickTurnStart
-→ TickTerrain: hazard trên footprint (bỏ IgnoresHazard) → Damage.Apply(ignoresArmor) → Grid.TickCollapse
+→ TickTerrain: hazard **một lần/lượt** lấy ô mạnh nhất trong footprint (bỏ IgnoresHazard) → Damage.Apply(ignoresArmor) → Grid.TickCollapse
 → TurnIndex++ + TurnAdvancedEvent
 → ObjectiveEvaluator.Evaluate
 → nếu StageResult != None: FinishStage
-→ ngược lại: ResetActionPoints → PushCheckpoint(TurnStart) → BeginTelegraph
+→ ngược lại: ResetActionPoints → BeginTelegraph; GameSession: PlanEnemyIntents → BeginPlayerPhase → PushCheckpoint(TurnStart)
 ```
 
 `GameSession` mới là nơi công bố intent + mở pha Player (xem §6.1).
@@ -479,7 +479,7 @@ Luật (đã chốt — xem `Docs/QUYET_DINH.md`):
 
 | Kiểu | Thành viên chính |
 |------|------------------|
-| `GameSnapshot` | `TurnIndex, Phase, Result, RandomState, Cells, LockedCells, Units, Intents, Duel`, `ContentEquals(other)` |
+| `GameSnapshot` | `TurnIndex, Phase, Result, RandomState, Cells, LockedCells, Units, Intents, Duel`, `ContentEquals(other)` so cả Intents (telegraph) + Duel |
 | `UnitSnapshot` | `Id, Definition, Position, Hp, ActionPoints, HasMovedThisTurn, HasActedThisTurn, Statuses, Cooldowns` |
 | `StatusSnapshot` | `Effect, Remaining, CanTick` |
 | `DuelSnapshot` | `DuelId, Round, BossSkillIndex, BossSkillId, BossPower, BossElement, LastResult, IsOver, Winner, SeenBossSkills`, `ContentEquals` |
@@ -565,19 +565,19 @@ Luật (đã chốt — xem `Docs/QUYET_DINH.md`):
 | 1 | Grid, shapes, LOS, collapse, lock | ✅ | `GridTests` 8 test |
 | 2 | Units, registry, footprint 2×2 | ✅ | `GridTests.Shapes_*`, `UnitRegistry` |
 | 3 | A*, reachable | ✅ | `PathfindingTests` 6 test |
-| 4 | Turn 4 nhịp + AP | ✅ | `TurnFlowTests` 5 test |
-| 5 | Validator + executor | ✅ | `StageObjectiveTests` 7 test |
-| 6 | Damage + element matrix | ✅ | `DamageTests` 6 test |
+| 4 | Turn 4 nhịp + AP | ✅ | `TurnFlowTests` 6 test |
+| 5 | Validator + executor | ✅ | `StageObjectiveTests` 10 test |
+| 6 | Damage + element matrix | ✅ | `DamageTests` 7 test |
 | 7 | EffectQueue + 10 effect | ✅ | `ClashTests`, `DamageTests` |
 | 8 | StatusSet + 5 status | ✅ | `TurnFlowTests`, `DamageTests` |
 | 9 | Telegraph + brain/tất định | ✅ | `AiDeterminismTests` 4 test |
-| 10 | Snapshot capture/restore | ✅ | `SnapshotTests` 4 test |
+| 10 | Snapshot capture/restore | ✅ | `SnapshotTests` 6 test |
 | 11 | Clash + rule table | ✅ | `ClashTests` 7 test |
 | 12 | Boss phase | ✅ | `AiDeterminismTests` |
 | 13 | ObjectiveEvaluator | ✅ | `StageObjectiveTests` |
 | 14 | GameSession façade | ✅ | `StageObjectiveTests`, `DuelFlowTests` |
 | 15 | RunKnowledge ngoài rewind | ✅ | `SnapshotTests` |
-| 16 | **Duel Phase 2** | ✅ | `DuelFlowTests` 11 test |
+| 16 | **Duel Phase 2** | ✅ | `DuelFlowTests` 13 test |
 | 17 | Input → ActionRequest | ⬜ | Unity layer |
 | 18 | HUD / command bar | ⬜ | UI |
 | 19 | Clash/Duel presenter | ⬜ | UI |
@@ -595,7 +595,7 @@ GameSession.Build(stage)
   ├─ EventBus, GridMap, UnitRegistry, GameState, services (Pathfinder/Damage/Telegraph/Clash/Duel/BossPhase/Knowledge)
   ├─ TurnManager, SnapshotService
   ├─ ApplyTerrains + SpawnUnits
-  └─ Turn.StartStage → PushCheckpoint(StageStart) → PlanEnemyIntents → BeginPlayerPhase
+  └─ Turn.StartStage → PlanEnemyIntents → BeginPlayerPhase → PushCheckpoint(StageStart)
                                        │
 Player dùng AP: TryExecute(ActionRequest) │
   ├─ ActionValidator.Validate (thuần)      │
@@ -611,7 +611,8 @@ GameSession.EndTurn()  [chỉ ở pha Player]
   ├─ Turn.BeginEnemyPhase → EnemyOrder
   ├─ RunEnemyBrains: resolve đúng intent đã Declare (không tính lại AI)
   ├─ Turn.EndEnemyPhase
-  ├─ Turn.EndTurn()       → tick status/hazard/collapse → TurnIndex++ → objective → checkpoint
+  ├─ Turn.EndTurn()       → tick status/hazard/collapse → TurnIndex++ → objective → BeginTelegraph
+  ├─ PlanEnemyIntents()   → BeginPlayerPhase() → PushCheckpoint(TurnStart)
   ├─ PlanEnemyIntents     → telegraph cho lượt kế
   └─ Turn.BeginPlayerPhase → ResetActionPoints = 2
 ```
@@ -833,7 +834,7 @@ Hành vi cũ chỉ cần chọn brain — không code.
 | Hạ tầng | asmdef Core (noEngineReferences), asmdef Tests (Editor-only), `InternalsVisibleTo`, harness dotnet ngoài Unity |
 | Core P0–P3 | Grid, Units, Turn, Actions, Damage/Effect/Status, Clash, AI/Telegraph, Snapshot/RunKnowledge, Objective, GameSession, Dialogue — 163 file |
 | Duel Phase 2 | `ClashDuel` + 6 file dữ liệu/kết quả + tích hợp Session/Validator/Executor/Snapshot/Objective/Turn |
-| Test | 65/65 xanh trên `dotnet test` (~155 ms) và Unity 6000.6.7f1 EditMode |
+| Test | 75/75 xanh trên `dotnet test` (~155 ms) và Unity 6000.6.7f1 EditMode |
 | Docs | KIEN_TRUC (bản này), CORE_API_TONG_HOP, THIET_KE_PHASE2_DUEL, QUYET_DINH, KE_HOACH_HOAN_THANH_GAME |
 
 ### 10.2 Còn lại (theo `Docs/KE_HOACH_HOAN_THANH_GAME.md`)
@@ -861,19 +862,19 @@ Tổng: demo ải 1 ~1 tuần; 3 ải ~2,5 tuần; đủ 5 ải ~4–5 tuần pa
 
 ## 11. Kiểm thử & bảo trì
 
-### 11.1 Test matrix — 65 test / 10 bộ (EditMode, không cần scene)
+### 11.1 Test matrix — 75 test / 10 bộ (EditMode, không cần scene)
 
 | Bộ | Số test | Khẳng định chính |
 |----|---------|------------------|
 | `GridTests` | 8 | Manhattan/Chebyshev; tường chặn cả walk+fly; bay qua pit nhưng không qua tường; LOS; collapse→Pit+event; lock/unlock; CellChangedEvent; shapes Line/Neighbours/Cone/Footprint |
 | `PathfindingTests` | 6 | path gồm start + cost; né tường; né unit; corridor bị chặn→NoPath; budget→OutOfRange; reachable Manhattan≤2 = 12 ô |
-| `TurnFlowTests` | 5 | initiative ↓ + hoà UnitId ↑; AP=2 + ApChangedEvent; Stagger không spend; EndTurn tăng TurnIndex, Poison chỉ gây damage từ lượt kế; BeginEnemyPhase reset AP + NextEnemy |
-| `DamageTests` | 6 | giáp sau hệ; Guard 4→1; Stagger/Flanked ×2/×1.5; Holy vs Necrotic ×1.5; IgnoresArmor; lethal → HP 0 + UnitDiedEvent |
+| `TurnFlowTests` | 6 | initiative ↓ + hoà UnitId ↑; AP=2 + ApChangedEvent; Stagger không spend; EndTurn tăng TurnIndex, Poison chỉ gây damage từ lượt kế; BeginEnemyPhase reset AP + NextEnemy |
+| `DamageTests` | 7 | giáp sau hệ; Guard 4→1; Stagger/Flanked ×2/×1.5; Holy vs Necrotic ×1.5; IgnoresArmor; lethal → HP 0 + UnitDiedEvent |
 | `ClashTests` | 7 | rule pair→element→default; Predict==Resolve; Win gắn Stagger boss; Lose gắn effect player; Draw không gắn; GetOptions chỉ chiêu Clash |
 | `AiDeterminismTests` | 4 | DangerCells sort Y→X; Declare thay thế + Clear count; BossPhase threshold + lock arena + event; Initiative ổn định |
-| `SnapshotTests` | 4 | Restore(Capture()) khớp state; rewind về checkpoint gần nhất; RunKnowledge không mất; store giữ capacity |
-| `StageObjectiveTests` | 7 | start pha Player/AP; Move trừ AP + đổi ô; vào tường→CellBlocked; attack xa→OutOfRange; giết boss→Victory; hết lượt→DefeatTurnLimit; player chết→DefeatPlayerDead |
-| `DuelFlowTests` | 11 | enter khi boss dưới ngưỡng + clear status; options 3 chiêu + badge; Win + finisher tự động ×2 + sang vòng; Draw 10% + round kế; Lose chết→DefeatPlayerDead; giết boss→Victory; Duel path bỏ qua Stage.Clash + ghi RunKnowledge; snapshot giữ DuelState; rule table ưu tiên cặp; Attack trong Duel bị chặn |
+| `SnapshotTests` | 6 | Restore(Capture()) khớp state; rewind về checkpoint gần nhất; RunKnowledge không mất; store giữ capacity |
+| `StageObjectiveTests` | 10 | start pha Player/AP; Move trừ AP + đổi ô; vào tường→CellBlocked; attack xa→OutOfRange; giết boss→Victory; hết lượt→DefeatTurnLimit; player chết→DefeatPlayerDead |
+| `DuelFlowTests` | 13 | enter khi boss dưới ngưỡng + clear status; options 3 chiêu + badge; Win + finisher tự động ×2 + sang vòng; Draw 10% + round kế; Lose chết→DefeatPlayerDead; giết boss→Victory; Duel path bỏ qua Stage.Clash + ghi RunKnowledge; snapshot giữ DuelState; rule table ưu tiên cặp; Attack trong Duel bị chặn |
 
 ### 11.2 Lệnh chạy test
 

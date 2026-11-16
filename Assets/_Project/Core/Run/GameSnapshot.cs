@@ -81,6 +81,11 @@ namespace BTH.Core.Run
                 }
             }
 
+            if (!IntentsEqual(Intents, other.Intents))
+            {
+                return false;
+            }
+
             if (Duel == null || other.Duel == null)
             {
                 return Duel == other.Duel;
@@ -121,6 +126,58 @@ namespace BTH.Core.Run
             foreach (var pair in a.Cooldowns)
             {
                 if (!b.Cooldowns.TryGetValue(pair.Key, out var turns) || turns != pair.Value)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IntentsEqual(IReadOnlyList<EnemyIntent> a, IReadOnlyList<EnemyIntent> b)
+        {
+            if (a.Count != b.Count)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < a.Count; i++)
+            {
+                if (!IntentEquals(a[i], b[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IntentEquals(EnemyIntent a, EnemyIntent b)
+        {
+            if (ReferenceEquals(a, b))
+            {
+                return true;
+            }
+
+            if (a == null || b == null || a.Unit != b.Unit ||
+                !string.Equals(a.SkillId, b.SkillId, StringComparison.Ordinal) ||
+                a.TargetCell != b.TargetCell || a.Priority != b.Priority ||
+                a.DangerCells.Count != b.DangerCells.Count || a.Effects.Count != b.Effects.Count)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < a.DangerCells.Count; i++)
+            {
+                if (a.DangerCells[i] != b.DangerCells[i])
+                {
+                    return false;
+                }
+            }
+
+            for (int i = 0; i < a.Effects.Count; i++)
+            {
+                if (a.Effects[i].GetType() != b.Effects[i].GetType())
                 {
                     return false;
                 }

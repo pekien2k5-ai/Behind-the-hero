@@ -157,11 +157,6 @@ namespace BTH.Core.Turn
             }
 
             ResetActionPoints();
-            if (_state.Snapshots != null)
-            {
-                _state.Snapshots.PushCheckpoint(SnapshotTrigger.TurnStart);
-            }
-
             BeginTelegraph();
         }
 
@@ -315,6 +310,8 @@ namespace BTH.Core.Turn
                 }
 
                 var cells = unit.Footprint;
+                int hazardDamage = 0;
+                var hazardCell = GridCoord.None;
                 for (int j = 0; j < cells.Count; j++)
                 {
                     if (!_state.Grid.TryGet(cells[j], out var cell) || !cell.IsHazard)
@@ -322,20 +319,27 @@ namespace BTH.Core.Turn
                         continue;
                     }
 
-                    int damage = cell.HazardDamagePerTurn;
-                    if (damage <= 0)
+                    // Hazard tính MỘT lần mỗi unit mỗi lượt, lấy ô nguy hiểm mạnh nhất
+                    // trong footprint — đứng trên 2 ô độc không bị trừ HP gấp đôi.
+                    if (cell.HazardDamagePerTurn > hazardDamage)
                     {
-                        continue;
+                        hazardDamage = cell.HazardDamagePerTurn;
+                        hazardCell = cells[j];
                     }
+                }
 
-                    _state.Events.Publish(new HazardTriggeredEvent(cells[j], unit.Id, damage));
-                    var request = new DamageRequest(UnitId.None, unit.Id, damage, ElementId.None,
-                        false, true, cells[j]);
-                    _state.Damage.Apply(request, _state);
-                    if (!unit.IsAlive)
-                    {
-                        break;
-                    }
+                if (hazardDamage <= 0)
+                {
+                    continue;
+                }
+
+                _state.Events.Publish(new HazardTriggeredEvent(hazardCell, unit.Id, hazardDamage));
+                var request = new DamageRequest(UnitId.None, unit.Id, hazardDamage, ElementId.None,
+                    false, true, hazardCell);
+                _state.Damage.Apply(request, _state);
+                if (!unit.IsAlive)
+                {
+                    continue;
                 }
             }
 

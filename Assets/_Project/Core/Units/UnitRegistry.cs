@@ -219,7 +219,12 @@ namespace BTH.Core.Units
             unit.DeathPublished = !unit.IsAlive;
             _all.Add(unit);
             _byId[unitId] = unit;
-            _occupancy.Add(unit);
+            if (unit.IsAlive)
+            {
+                // Xác unit chết không được chiếm ô: nếu add vào occupancy, các ô trống
+                // sẽ không thể đặt quân sau khi rewind/restore.
+                _occupancy.Add(unit);
+            }
             if (id >= _nextId)
             {
                 _nextId = id + 1;

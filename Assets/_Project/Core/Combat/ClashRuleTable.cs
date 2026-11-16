@@ -14,7 +14,10 @@ namespace BTH.Core.Combat
         private readonly Dictionary<string, int> _elementBonuses =
             new Dictionary<string, int>(StringComparer.Ordinal);
 
-        public int DefaultBonus { get; set; } = 3;
+        /// <summary>Điểm cộng mặc định khi không khớp cặp chiêu/hệ nào (dùng chung với ClashDuel).</summary>
+        public const int FallbackBonus = 3;
+
+        public int DefaultBonus { get; set; } = FallbackBonus;
 
         public void Add(ClashRule rule)
         {

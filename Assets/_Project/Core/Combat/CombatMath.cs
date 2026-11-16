@@ -28,7 +28,7 @@ namespace BTH.Core.Combat
             }
 
             power *= statusMultiplier;
-            return Math.Max(1, (int)Math.Round(power));
+            return Math.Max(1, (int)Math.Round(power, MidpointRounding.AwayFromZero));
         }
 
         public static float CombineMultipliers(float elementMultiplier, float statusMultiplier)
