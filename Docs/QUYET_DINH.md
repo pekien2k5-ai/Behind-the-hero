@@ -23,6 +23,8 @@
 | 8 | Turn limit / AP / End Turn | Không áp dụng trong Duel |
 | 9 | Chu kỳ chiêu boss | 2 chiêu lặp vòng: tuyệt kỹ → đòn thường → tuyệt kỹ… (đòn thường power thấp hơn) |
 
+Mỗi round Duel kết thúc bằng bước **tick status 2 bên** giống EndTurn bàn cờ: Poison gây 3 HP/lượt, Flanked/Guard/Stagger hết hạn; status gắn giữa vòng không tick ngay ở vòng đó (chốt bổ sung 2026-11-16).
+
 ## 3. Dữ liệu & nội dung (đã chốt)
 
 | # | Mục | Chốt |

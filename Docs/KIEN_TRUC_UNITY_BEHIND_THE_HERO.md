@@ -3,7 +3,7 @@
 > Tài liệu kiến trúc & phân rã tính năng, dựng từ thiết kế game trong `65CNTT_Nhom10_Tai_lieu_thiet_ke.docx`
 > (Nhóm 10 – 65CNTT: Ngô Quý Kiên, Nguyễn Tuấn Kiệt, Nguyễn Xuân Lăng, Phạm Thị Huyền Linh).
 >
-> **Cập nhật 2026-11-16:** đối chiếu với code thật — `BTH.Core` (163 file) + `BTH.Content` (30 file) đã hoàn tất **64 unit test**
+> **Cập nhật 2026-11-16:** đối chiếu với code thật — `BTH.Core` (163 file) + `BTH.Content` (30 file) đã hoàn tất **65 unit test**
 > (gồm **Duel mode** cho Phase 2 với auto finisher); Unity/UI vẫn là kế hoạch. Các chỗ ghi ✅ là đã có trong code;
 > ⬜ là còn phải làm. Tài liệu API chi tiết song song: `CORE_API_TONG_HOP.md`.
 
@@ -23,7 +23,7 @@
 | 8 | Bảng số liệu | Đơn vị, ma trận Clash, bảng Duel, hằng số, 5 màn |
 | 9 | Công thức mở rộng | Thêm skill/quái/boss/màn/địa hình/duel không sửa Core |
 | 10 | Lộ trình | Đã xong gì, còn gì, DoD |
-| 11 | Kiểm thử & bảo trì | 64 test/10 bộ, lệnh chạy, checklist review, anti-pattern |
+| 11 | Kiểm thử & bảo trì | 65 test/10 bộ, lệnh chạy, checklist review, anti-pattern |
 | 12 | ADR & quyết định | 7 ADR + danh sách đã chốt |
 
 ---
@@ -175,7 +175,7 @@ Assets/Tests/
 ├── AiDeterminismTests.cs        4 test
 ├── SnapshotTests.cs             4 test
 ├── StageObjectiveTests.cs       7 test
-└── DuelFlowTests.cs             10 test
+└── DuelFlowTests.cs             11 test
 ```
 
 ### 3.3 Dự kiến Content / Game / UI / Editor (chưa tạo)
@@ -449,7 +449,8 @@ Luật (đã chốt — xem `Docs/QUYET_DINH.md`):
 - Win → `WinEffect` (mặc định Stagger) lên boss + **tự đánh `max(1, FinisherCount)` đòn kết liễu** ngay trong `Choose`, rồi sang vòng.
 - **Draw → mỗi bên mất 10% uy lực** (`round(power × DrawChipRatio)`, bỏ giáp, element None).
 - Lose → người chơi nhận đúng `BossPower` + `LoseEffect` (nếu có).
-- Finisher tự động: đòn đánh thường của player lên boss (giáp vẫn áp dụng; Stagger ×2), lặp `FinisherCount` lần rồi sang vòng — không cần người chơi gửi `Attack`.
+- Finisher tự động: đòn đánh thường của player lên boss (giáp vẫn áp dụng; Stagger ×2), lặp `FinisherCount` lần — không cần người chơi gửi `Attack`.
+- Cuối mỗi vòng, `ClashDuel` gọi `EndRound()` tick status 2 bên theo đúng nhịp `TurnManager.EndTurn` (`TickTurnEnd` → `TickTurnStart`), rồi mới `EnterRound` kế: Poison gây 3 HP/lượt, Flanked/Guard/Stagger hết hạn; status gắn trong vòng không tick ngay ở vòng đó.
 - Boss ra chiêu theo chu kỳ `BossSkillIds[(round−1) % n]`; `SeenBossSkills` + `RunKnowledge("boss-skill:<id>")` ghi nhận chiêu đã thấy.
 - HP mang theo; status 2 bên clear lúc `Start`; không turn limit/AP/End Turn.
 
@@ -576,7 +577,7 @@ Luật (đã chốt — xem `Docs/QUYET_DINH.md`):
 | 13 | ObjectiveEvaluator | ✅ | `StageObjectiveTests` |
 | 14 | GameSession façade | ✅ | `StageObjectiveTests`, `DuelFlowTests` |
 | 15 | RunKnowledge ngoài rewind | ✅ | `SnapshotTests` |
-| 16 | **Duel Phase 2** | ✅ | `DuelFlowTests` 10 test |
+| 16 | **Duel Phase 2** | ✅ | `DuelFlowTests` 11 test |
 | 17 | Input → ActionRequest | ⬜ | Unity layer |
 | 18 | HUD / command bar | ⬜ | UI |
 | 19 | Clash/Duel presenter | ⬜ | UI |
@@ -641,9 +642,9 @@ Người chơi xem Duel screen (background + 2 bên + 3 thẻ chiêu)
   └─ ClashDuel.Choose(skillId)
         ├─ power = EffectivePower(skill, bonus) so với BossPower
         ├─ Win  → boss.WinEffect + tự đánh FinisherCount đòn (ATK × status; Stagger ×2)
-        │          → EnterRound kế (không còn bước UI gửi Attack)
-        ├─ Draw → mỗi bên mất 10% power (bỏ giáp) → EnterRound kế
-        └─ Lose → player nhận BossPower (+ LoseEffect) → EnterRound kế
+        ├─ Draw → mỗi bên mất 10% power (bỏ giáp)
+        ├─ Lose → player nhận BossPower (+ LoseEffect)
+        └─ EndRound: tick status 2 bên (Poison damage, status hết hạn) → EnterRound kế
                                               │
 Ai chết trước → Duel.End(Winner) → DuelEndedEvent
   ├─ boss chết  → ObjectiveEvaluator → Victory → FinishStage → StageEndedEvent
@@ -832,7 +833,7 @@ Hành vi cũ chỉ cần chọn brain — không code.
 | Hạ tầng | asmdef Core (noEngineReferences), asmdef Tests (Editor-only), `InternalsVisibleTo`, harness dotnet ngoài Unity |
 | Core P0–P3 | Grid, Units, Turn, Actions, Damage/Effect/Status, Clash, AI/Telegraph, Snapshot/RunKnowledge, Objective, GameSession, Dialogue — 163 file |
 | Duel Phase 2 | `ClashDuel` + 6 file dữ liệu/kết quả + tích hợp Session/Validator/Executor/Snapshot/Objective/Turn |
-| Test | 64/64 xanh trên `dotnet test` (~155 ms) và Unity 6000.6.7f1 EditMode |
+| Test | 65/65 xanh trên `dotnet test` (~155 ms) và Unity 6000.6.7f1 EditMode |
 | Docs | KIEN_TRUC (bản này), CORE_API_TONG_HOP, THIET_KE_PHASE2_DUEL, QUYET_DINH, KE_HOACH_HOAN_THANH_GAME |
 
 ### 10.2 Còn lại (theo `Docs/KE_HOACH_HOAN_THANH_GAME.md`)
@@ -860,7 +861,7 @@ Tổng: demo ải 1 ~1 tuần; 3 ải ~2,5 tuần; đủ 5 ải ~4–5 tuần pa
 
 ## 11. Kiểm thử & bảo trì
 
-### 11.1 Test matrix — 64 test / 10 bộ (EditMode, không cần scene)
+### 11.1 Test matrix — 65 test / 10 bộ (EditMode, không cần scene)
 
 | Bộ | Số test | Khẳng định chính |
 |----|---------|------------------|
@@ -872,7 +873,7 @@ Tổng: demo ải 1 ~1 tuần; 3 ải ~2,5 tuần; đủ 5 ải ~4–5 tuần pa
 | `AiDeterminismTests` | 4 | DangerCells sort Y→X; Declare thay thế + Clear count; BossPhase threshold + lock arena + event; Initiative ổn định |
 | `SnapshotTests` | 4 | Restore(Capture()) khớp state; rewind về checkpoint gần nhất; RunKnowledge không mất; store giữ capacity |
 | `StageObjectiveTests` | 7 | start pha Player/AP; Move trừ AP + đổi ô; vào tường→CellBlocked; attack xa→OutOfRange; giết boss→Victory; hết lượt→DefeatTurnLimit; player chết→DefeatPlayerDead |
-| `DuelFlowTests` | 10 | enter khi boss dưới ngưỡng + clear status; options 3 chiêu + badge; Win + finisher tự động ×2 + sang vòng; Draw 10% + round kế; Lose chết→DefeatPlayerDead; giết boss→Victory; Duel path bỏ qua Stage.Clash + ghi RunKnowledge; snapshot giữ DuelState; rule table ưu tiên cặp; Attack trong Duel bị chặn |
+| `DuelFlowTests` | 11 | enter khi boss dưới ngưỡng + clear status; options 3 chiêu + badge; Win + finisher tự động ×2 + sang vòng; Draw 10% + round kế; Lose chết→DefeatPlayerDead; giết boss→Victory; Duel path bỏ qua Stage.Clash + ghi RunKnowledge; snapshot giữ DuelState; rule table ưu tiên cặp; Attack trong Duel bị chặn |
 
 ### 11.2 Lệnh chạy test
 

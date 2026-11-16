@@ -177,6 +177,29 @@ namespace BTH.Core.Tests
         }
 
         [Test]
+        public void PoisonWinEffect_TicksAtEndOfNextRounds_LikeEndTurn()
+        {
+            var session = CreateDuelSession(PoisonDuel(), bossHp: 25);
+            EnterDuel(session);
+            var hero = session.State.Units.Player;
+            var boss = session.State.Units.Boss;
+
+            session.TryExecute(ActionRequest.ClashSkill(hero.Id, "sword")); // 17 vs 13 → Win
+            Assert.That(boss.Hp, Is.EqualTo(13), "17 - finisher 4; Poison chưa tick ở vòng gắn.");
+            Assert.That(boss.Statuses.Has(StatusIds.Poison), Is.True);
+            Assert.That(boss.Statuses.GetRemaining(StatusIds.Poison), Is.EqualTo(2));
+
+            session.TryExecute(ActionRequest.ClashSkill(hero.Id, "heavy")); // 13 vs 13 → Draw
+            Assert.That(boss.Hp, Is.EqualTo(9), "13 - chip 1 - Poison 3 = 9 ở cuối vòng 2.");
+            Assert.That(boss.Statuses.GetRemaining(StatusIds.Poison), Is.EqualTo(1));
+
+            session.TryExecute(ActionRequest.ClashSkill(hero.Id, "heavy")); // Draw
+            Assert.That(boss.Hp, Is.EqualTo(5), "9 - chip 1 - Poison 3 = 5 ở cuối vòng 3.");
+            Assert.That(boss.Statuses.Has(StatusIds.Poison), Is.False, "Poison 2 lượt đã hết.");
+            Assert.That(session.State.Duel.State.Round, Is.EqualTo(4));
+        }
+
+        [Test]
         public void ClashRuleTable_PrefersSkillPair_ThenElement_ThenDefault()
         {
             var table = new ClashRuleTable();
@@ -223,6 +246,19 @@ namespace BTH.Core.Tests
         {
             var duel = new DuelDefinition { Id = "duel-boss" };
             duel.BossSkillIds.AddRange(new[] { "boss-strike", "boss-strike-2" });
+            duel.PlayerSkillIds.AddRange(new[] { "sword", "burst", "heavy" });
+            return duel;
+        }
+
+        private static DuelDefinition PoisonDuel()
+        {
+            var duel = new DuelDefinition
+            {
+                Id = "duel-poison",
+                BossPower = 13,
+                WinEffect = () => new PoisonStatus(3, 2)
+            };
+            duel.BossSkillIds.AddRange(new[] { "boss-strike-2", "boss-strike-2" });
             duel.PlayerSkillIds.AddRange(new[] { "sword", "burst", "heavy" });
             return duel;
         }

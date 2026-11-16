@@ -29,8 +29,9 @@ Phase 1 (bàn cờ, hiện có)
     1. Boss công bố chiêu (banner tên chiêu + hệ + uy lực)
     2. Người chơi chọn 1 trong 3 chiêu Clash (badge Win/Draw/Lose dự đoán)
     3. Resolve → hiệu ứng + damage + status
-    4. Nếu thắng: boss Stagger (hoặc hiệu ứng riêng của ải) → **tự đánh kết liễu** (FinisherCount đòn), rồi sang round kế
-    5. Kiểm tra chết → kết thúc, ngược lại sang round kế
+    4. Nếu thắng: boss Stagger (hoặc hiệu ứng riêng của ải) → **tự đánh kết liễu** (FinisherCount đòn)
+    5. Cuối round: tick status 2 bên như EndTurn (Poison gây 3 HP/lượt, Flanked/Guard/Stagger hết hạn)
+    6. Kiểm tra chết → kết thúc, ngược lại sang round kế
         │
         ├── boss chết  → VICTORY (Ending chọn ở dialogue cuối ải 5)
         └── player chết → DEFEAT  → Rewind về ClashStart
@@ -121,7 +122,7 @@ Quy tắc resolve (dùng chung `ClashRuleTable.GetBonus` với phase Clash):
 
 | Kết quả | Điều kiện | Hệ quả |
 |---|---|---|
-| **Win** | PlayerPower > BossPower | gắn `WinEffect` (mặc định Stagger); **tự đánh `FinisherCount` đòn kết liễu** rồi sang vòng — không cần bấm Attack |
+| **Win** | PlayerPower > BossPower | gắn `WinEffect` (mặc định Stagger); **tự đánh `FinisherCount` đòn kết liễu**; cuối vòng tick status 2 bên rồi sang vòng — không cần bấm Attack |
 | **Draw** | bằng nhau | mỗi bên mất `round(power * 10%)` HP (xuyên giáp), không status |
 | **Lose** | PlayerPower < BossPower | player mất `BossPower` HP (xuyên giáp); `LoseEffect` nếu có |
 
@@ -152,17 +153,18 @@ Kết thúc: boss chết → Winner = player; player chết → Winner = boss; `
 | `Core/Run/Events/` | `DuelRoundStartedEvent(round, bossSkillId, bossPower)`, `DuelEndedEvent(result, winner)` |
 | `Core/Turn/TurnManager.cs` | `BeginDuel()`: Phase=Duel + checkpoint ClashStart; `EndTurn` no-op khi Duel |
 
-**Test mới `Assets/Tests/DuelFlowTests.cs` (10 ca):**
+**Test mới `Assets/Tests/DuelFlowTests.cs` (11 ca):**
 1. Boss HP < 70% → phase `Duel`, checkpoint `ClashStart`, HP giữ nguyên, status bị clear.
 2. Thắng Clash → boss Stagger + finisher tự động ×2, tự sang vòng 2 (không cần Attack).
 3. Hoà → cả 2 mất 10% uy lực.
 4. Thua → player mất đúng `BossPower`.
 5. Finisher tự động giết boss → `Victory` + `StageEndedEvent`.
 6. Lose giết player → `DefeatPlayerDead`.
-7. Validator: Duel từ chối Move/EndTurn/Guard/**Attack**; chỉ cho ClashSkill.
-8. Snapshot giữa Duel → Restore trùng khớp; rewind từ thua về round 1, `RunKnowledge` giữ chiêu boss đã thấy.
-9. Rule table ưu tiên cặp chiêu → cặp hệ → mặc định +3.
-10. `Attack` trong Duel trả `WrongPhase` (finisher là tự động).
+7. Poison win effect tick 3 HP/lượt ở cuối 2 vòng kế tiếp rồi hết hạn (nhịp EndTurn trong Duel).
+8. Validator: Duel từ chối Move/EndTurn/Guard/**Attack**; chỉ cho ClashSkill.
+9. Snapshot giữa Duel → Restore trùng khớp; rewind từ thua về round 1, `RunKnowledge` giữ chiêu boss đã thấy.
+10. Rule table ưu tiên cặp chiêu → cặp hệ → mặc định +3.
+11. `Attack` trong Duel trả `WrongPhase` (finisher là tự động).
 
 ---
 

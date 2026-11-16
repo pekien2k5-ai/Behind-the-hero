@@ -3,7 +3,7 @@
 > Tài liệu tra cứu cho cả nhóm: **lớp `BTH.Core` đang có gì, dùng thế nào, sai chỗ nào thì sửa ở đâu.**
 > Đối tượng: người viết Content (skill/quái/màn), người viết Unity/UI, người review.
 >
-> **Trạng thái 2026-11-16:** Core + Content hoàn tất — **163 + 30 file · 64 unit test xanh** (dotnet + Unity EditMode),
+> **Trạng thái 2026-11-16:** Core + Content hoàn tất — **163 + 30 file · 65 unit test xanh** (dotnet + Unity EditMode),
 > gồm **Duel mode** cho Phase 2 với auto finisher. Unity/UI chưa có code.
 > Kiến trúc & lý do thiết kế: `KIEN_TRUC_UNITY_BEHIND_THE_HERO.md`. Luật Duel đã chốt: `QUYET_DINH.md`.
 
@@ -735,6 +735,7 @@ Choose(playerSkillId):
     Draw → chip = round(power × DrawChipRatio) ; Damage.Apply cả 2 bên (ignoresArmor, element None)
     Lose → Damage.Apply(player, BossPower) ; nếu LoseEffect != null → gắn cho player
   phát ClashResolvedEvent
+  nếu cả 2 còn sống → EndRound(): tick status 2 bên (TickTurnEnd → TickTurnStart) như EndTurn
   CheckDeaths (player chết ưu tiên trước) → nếu chết: End(...)
   nếu chưa kết thúc → EnterRound(n+1)     // tự end turn, không có cửa sổ finisher thủ công
 ```
@@ -1180,7 +1181,7 @@ if (session.State.Snapshots.CanRewind) {
 Select-String -Path "D:\test\_core_check\results.xml" -Pattern "<test-run"
 ```
 
-Kết quả hiện tại: **64/64 pass** (10 bộ), `dotnet` ~155 ms; Unity EditMode cũng 64/64.
+Kết quả hiện tại: **65/65 pass** (10 bộ), `dotnet` ~155 ms; Unity EditMode cũng 65/65.
 
 ---
 

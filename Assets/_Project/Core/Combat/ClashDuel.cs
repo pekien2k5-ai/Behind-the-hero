@@ -170,6 +170,12 @@ namespace BTH.Core.Combat
                 damageToBoss = ApplyFinishers();
             }
 
+            // Kết thúc vòng: tick status như EndTurn bàn cờ (Poison gây damage, Flanked/Guard hết hạn).
+            if (_player.IsAlive && _boss.IsAlive)
+            {
+                EndRound();
+            }
+
             var round = new ClashRoundResult(result, playerPower, bossPower, damageToPlayer, damageToBoss, applied);
             CheckDeaths();
             if (!_duel.IsOver)
@@ -212,6 +218,35 @@ namespace BTH.Core.Combat
             }
 
             return total;
+        }
+
+        /// <summary>
+        /// Kết thúc vòng Duel: tick trạng thái của cả hai bên theo đúng nhịp EndTurn bàn cờ.
+        /// Status gắn giữa vòng có CanTick=false nên không tick ngay ở vòng đó;
+        /// TickTurnStart bật cờ để vòng sau nó bắt đầu gây damage/hết hạn.
+        /// </summary>
+        private void EndRound()
+        {
+            TickStatuses(_player);
+            TickStatuses(_boss);
+        }
+
+        private void TickStatuses(UnitState unit)
+        {
+            if (unit == null || !unit.IsAlive)
+            {
+                return;
+            }
+
+            var context = new StatusContext(unit, _state.Events, _state.Units);
+            unit.Statuses.TickTurnEnd(context);
+            if (!unit.IsAlive)
+            {
+                return; // Poison có thể giết tại đây; CheckDeaths sẽ đóng Duel.
+            }
+
+            unit.Statuses.TickTurnStart(context);
+            unit.TickCooldowns();
         }
 
         public DuelSnapshot Capture()
