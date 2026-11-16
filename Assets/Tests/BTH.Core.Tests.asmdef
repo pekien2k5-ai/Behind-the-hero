@@ -3,6 +3,7 @@
     "rootNamespace": "BTH.Core.Tests",
     "references": [
         "BTH.Core",
+        "BTH.Content",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
