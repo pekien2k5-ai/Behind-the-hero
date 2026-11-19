@@ -3,9 +3,9 @@
 > Tài liệu tra cứu cho cả nhóm: **lớp `BTH.Core` đang có gì, dùng thế nào, sai chỗ nào thì sửa ở đâu.**
 > Đối tượng: người viết Content (skill/quái/màn), người viết Unity/UI, người review.
 >
-> **Trạng thái 2026-11-16:** Core + Content hoàn tất — **163 + 30 file · 75 unit test xanh** (dotnet + Unity EditMode),
-> gồm **Duel mode** cho Phase 2 với auto finisher. Unity/UI chưa có code.
-> Kiến trúc & lý do thiết kế: `KIEN_TRUC_UNITY_BEHIND_THE_HERO.md`. Luật Duel đã chốt: `QUYET_DINH.md`.
+> **Trạng thái 2026-11-19:** Toàn bộ 4 lớp `BTH.Core` + `BTH.Content` + `BTH.Game` + `BTH.UI` (+ `BTH.Editor`) đã hoàn tất — **81/81 unit test xanh** (`dotnet test` ~90 ms + Unity EditMode 81/81),
+> gồm **Duel mode** cho Phase 2 với auto finisher, bộ Spritesheets 4 trạng thái (`Idle/Walk/Attack/Death`), 25 Tileset địa hình, 12 VFX, 5 màn chơi và giao diện HUD/Duel chạy trực tiếp trong Play Mode.
+> Kiến trúc & lý do thiết kế: `KIEN_TRUC_UNITY_BEHIND_THE_HERO.md`. Luật Duel đã chốt: `QUYET_DINH.md`. Báo cáo Đồ họa, 5 Màn & Giao diện: `BAO_CAO_CV3_NGUYEN_XUAN_LANG.md`.
 
 ---
 
@@ -1182,7 +1182,7 @@ if (session.State.Snapshots.CanRewind) {
 Select-String -Path "D:\test\_core_check\results.xml" -Pattern "<test-run"
 ```
 
-Kết quả hiện tại: **75/75 pass** (10 bộ), `dotnet` ~155 ms; Unity EditMode cũng 75/75.
+Kết quả hiện tại: **81/81 pass** (11 bộ test, gồm 14 test trong `ContentTests`), `dotnet` ~90 ms; Unity EditMode cũng **81/81**.
 
 ---
 
@@ -1207,27 +1207,28 @@ Kết quả hiện tại: **75/75 pass** (10 bộ), `dotnet` ~155 ms; Unity Edit
 
 ---
 
-## 19. Checklist khi bắt đầu Content/UI
+## 19. Checklist hoàn thành Content/UI (Đã hoàn tất 2026-11-19)
 
 **Content (P1):**
 
-- [ ] 9 `UnitDefinition` (Wanderer, Eosphoros, Imp, Gargoyle, 5 boss) + portrait id
-- [ ] ~22 `SkillDefinition` + behaviour cho chiêu đặc biệt; đánh dấu `IsClashSkill`
-- [ ] 6 brain: MeleeRusher, RangedLurker, 5 boss (kế thừa base), (AllyBrain đã cắt)
-- [ ] 5 `StageDefinition` (8×8, 9×9, 9×9, 10×10, 8×8) + terrain override
-- [ ] 5 `ClashDefinition` (power 15/14/16/18/18) + `ClashRuleTable`
-- [ ] 5 `DuelDefinition` (background/music/transition, boss 2 chiêu, player 3 chiêu, win effect)
-- [ ] 1 test simulation: start ải 1 → đánh → Duel → thắng
+- [x] 9 `UnitDefinition` (Wanderer, Eosphoros, Imp, Gargoyle, 5 boss) + portrait id (`UnitCatalog.cs`)
+- [x] 26 `SkillDefinition` + behaviour cho chiêu đặc biệt; đánh dấu `IsClashSkill` (`SkillCatalog.cs`)
+- [x] 8 brain: MeleeRusher, RangedLurker, Ally, 5 boss (`BrainCatalog.cs`)
+- [x] 8 loại địa hình tương tác (`TerrainCatalog.cs`: Floor, Wall, Pit, Cracked, Poison, SpikeTrap, Lava, Chest hồi +4 HP)
+- [x] 5 `StageDefinition` (8×8, 9×9, 9×9, 10×10, 8×8) + terrain override (`StageCatalog.cs`)
+- [x] 5 `ClashDefinition` (power 15/14/16/18/18) + `ClashRuleTable` (`DuelCatalog.cs`)
+- [x] 5 `DuelDefinition` (background/music/transition, boss 2 chiêu, player 3 chiêu, win effect) (`DuelCatalog.cs`)
+- [x] 14 test `ContentTests`: start ải 1..5 → đánh → Duel → thắng, mở rương hồi máu, sập sàn nứt, kiểm tra file PNG Art/Audio
 
-**Unity/UI (P2–P3):**
+**Unity/UI (P2–P5):**
 
-- [ ] `GameBootstrap` tạo `GameSession`, load stage, bind presenter
-- [ ] `BoardView`/`UnitView`/`BoardHighlighter` đọc event + `IGameStateView`
-- [ ] `InputController` → `ActionRequest` (phím mũi tên/G/S/D/E/Space + chuột)
-- [ ] `HudPresenter` (HP pips, AP, MP trang trí), command bar
-- [ ] `DuelScreenPresenter` (background, 2 bên, 3 thẻ + badge xanh/vàng/đỏ, finisher tự động)
-- [ ] Dialogue view + 2 ending; menu/settings/audio
-- [ ] PlayMode smoke test: vào scene → đi 1 ô → đánh → EndTurn không lỗi
+- [x] `GameBootstrap` tạo `GameSession`, load stage, bind event bus và tự động chạy khi bấm Play (`[RuntimeInitializeOnLoadMethod]`)
+- [x] Hiển thị bàn cờ Tileset, viền phát sáng vùng đi được / đường dẫn A* / vùng đỏ Telegraph Boss
+- [x] `UnitSpriteAnimator` điều khiển chuỗi 4 trạng thái (`Idle`, `Walk`, `Attack`, `Death`) + `VfxPopupManager` chạy 12 dải VFX kỹ năng
+- [x] Điều khiển phím tắt (`[G/S/1/2/3/E/D/R/X/Space]`) + click chuột trực tiếp trên bàn cờ
+- [x] Cột HUD bên trái (Portrait, HP, MP, AP, Status, Actions, Thông tin ô cờ), Top Bar chọn 5 ải + Thanh máu Boss kèm vạch 70% Duel
+- [x] Màn hình Phase 2 Duel (5 background, 2 bên nhân vật/Boss động, 3 thẻ chiêu + huy hiệu dự báo Thắng/Hòa/Thua, kết liễu tự động)
+- [x] Khung chân dung đối thoại + 2 nhánh Ending A/B; bảng cài đặt (`GameOptionsModel`) + âm thanh BGM/SFX (`AudioCatalog`)
 
 ---
 

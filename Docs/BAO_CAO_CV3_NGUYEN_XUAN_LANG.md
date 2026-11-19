@@ -117,7 +117,7 @@ Hệ thống giao diện được thiết kế theo đúng bản mẫu `mockup_g
 - **Thanh chọn nhanh 5 Ải (`Ải 1` → `Ải 5`):** Giúp kiểm thử và trình diễn ngay bất kỳ màn chơi nào.
 - **Chân dung & Thanh Máu Boss:** Hiển thị Portrait riêng của từng Boss, thanh máu lớn kèm **vạch vàng đánh dấu mốc 70% HP** (ngưỡng kích hoạt Phase 2 Duel Mode).
 - **Banner Gợi Ý Câu Đố & Telegraph:** Giải thích cơ chế giải đố của ải hiện tại và thông báo mọi sự kiện chiến đấu theo thời gian thực.
-- **Cụm nút `↺ REWIND`, `⟳ RESET` và `[TAB] Trưng Bày Art CV3`:** Đặt ở góc phải trên đúng bố cục bản mẫu.
+- **Cụm nút `↺ UNDO`, `⟳ RESET[X]` và `⚙ CÀI ĐẶT`:** Đặt ở góc phải trên đúng bố cục bản mẫu.
 
 ### 4.3 Khung Chân Dung Đối Thoại (`DrawDialogueOverlay`)
 - Xuất hiện ở đầu mỗi màn chơi và cuối màn 5.
@@ -135,13 +135,13 @@ Hệ thống giao diện được thiết kế theo đúng bản mẫu `mockup_g
 
 ## 5. Khung Tích Hợp Cho Toàn Bộ 4 Thành Viên Nhóm 10 (CV1, CV2, CV3, CV4)
 
-Đối chiếu với tài liệu thiết kế `65CNTT_Nhom10_Tai_lieu_thiet_ke.docx`, mã nguồn đã được tổ chức thành 4 khung module rõ ràng tương ứng với bảng phân công công việc của cả 4 thành viên (có thể xem trực tiếp trong game bằng phím **`[TAB] Trưng Bày 4 CV`**):
+Đối chiếu với tài liệu thiết kế `65CNTT_Nhom10_Tai_lieu_thiet_ke.docx`, mã nguồn đã được tổ chức thành 4 khung module rõ ràng tương ứng với bảng phân công công việc của cả 4 thành viên:
 
 | STT | Thành viên | Mã SV | Khung Code & File Triển Khai |
 |---|---|---|---|
 | **CV1** | **Ngô Quý Kiên** (Nhóm trưởng) | `2351060457` | • `Assets/_Project/Content/GameMatrixCatalog.cs`: Quản lý High Concept, `CreateBalancedRules()` (AP=2, MOV=2, TurnLimit=25, Phase2=70%, Stagger ×2, Guard ×0.2, Flanked ×1.5), Bảng Ma trận cân bằng 9 Đơn vị (`GetUnitMatrix()`), Ma trận Hệ thuộc tính (`ElementMatrix`).<br>• `Assets/_Project/Core/Run/GameSession.cs`: Core Loop, Die & Rewind, Ràng buộc lượt đi. |
 | **CV2** | **Nguyễn Tuấn Kiệt** | `2351060458` | • `Assets/_Project/Content/TacticalNavigator.cs`: Khung tìm đường A* và vẽ đường dẫn thông minh (`PreviewPlayerPath`, `GetPlayerReachableSet`), Tua ngược trạng thái (`TryRewind`), Truy vấn vùng nguy hiểm AI (`GetTelegraphDangerCells`).<br>• `Assets/_Project/Core/Grid/GridMap.cs`, `AStarPathfinder.cs`, `TurnManager.cs`, `SnapshotService.cs`, `Assets/_Project/Content/Brains/BrainCatalog.cs`. |
-| **CV3** | **Nguyễn Xuân Lăng** | `2351060459` | • `Assets/_Project/Content/Cv3DesignCatalog.cs`: Đặc tả 9 Spritesheets 4 trạng thái (`Idle, Walk, Attack, Death`), 12 dải VFX kỹ năng, 8 loại địa hình Tileset tương tác, Bảng màu Dark Fantasy (`#E5C158, #2C4270, #6B3BA7, #8B1E1E, #3A3E45`).<br>• `Assets/_Project/Content/Terrain/TerrainCatalog.cs`: 8 địa hình ô cờ + tương tác bước vào Rương kho báu (`+4 HP` tức thời) và Ô gạch nứt (`ArmCollapse(1)`).<br>• `Assets/_Project/Content/Stages/StageCatalog.cs` & `DuelCatalog.cs`: Bố cục & cơ chế câu đố 5 ải màn chơi + Phase 2 Duel.<br>• `Assets/_Project/Game/ArtCatalog.cs`, `UnitSpriteAnimator.cs`, `VfxPopupManager.cs`, `GameBootstrap.cs`, `Assets/_Project/UI/HudSpecPresenter.cs`: Toàn bộ hiển thị Spritesheet, Tileset, VFX, UI/HUD, Khung chân dung đối thoại, Thanh máu/mana và Bảng cài đặt (`GameOptionsModel`). |
+| **CV3** | **Nguyễn Xuân Lăng** | `2351060459` | • `Assets/_Project/Content/ArtAssetCatalog.cs`: Đặc tả 9 Spritesheets 4 trạng thái (`Idle, Walk, Attack, Death`), 12 dải VFX kỹ năng, 8 loại địa hình Tileset tương tác, Bảng màu Dark Fantasy (`#E5C158, #2C4270, #6B3BA7, #8B1E1E, #3A3E45`).<br>• `Assets/_Project/Content/Terrain/TerrainCatalog.cs`: 8 địa hình ô cờ + tương tác bước vào Rương kho báu (`+4 HP` tức thời) và Ô gạch nứt (`ArmCollapse(1)`).<br>• `Assets/_Project/Content/Stages/StageCatalog.cs` & `DuelCatalog.cs`: Bố cục & cơ chế câu đố 5 ải màn chơi + Phase 2 Duel.<br>• `Assets/_Project/Game/ArtCatalog.cs`, `UnitSpriteAnimator.cs`, `VfxPopupManager.cs`, `GameBootstrap.cs`, `Assets/_Project/UI/HudSpecPresenter.cs`: Toàn bộ hiển thị Spritesheet, Tileset, VFX, UI/HUD, Khung chân dung đối thoại, Thanh máu/mana và Bảng cài đặt (`GameOptionsModel`). |
 | **CV4** | **Phạm Thị Huyền Linh** | `2351060460` | • `Assets/_Project/Content/Dialogues/DialogueCatalog.cs`: Cốt truyện chi tiết 3 Hồi (`GetThreeActsLore()`), kịch bản hội thoại nguyên văn theo GDD §4.4 cho cả 5 ải và 2 nhánh kết thúc (**Ending A: Lời nói dối vĩnh hằng** & **Ending B: Tội đồ ẩn cư**).<br>• `Assets/_Project/Game/AudioCatalog.cs`: Khung âm thanh `IAudioService`, 2 bản BGM (`forest_theme`, `boss_theme`) và 14 hiệu ứng SFX (`attack1..3`, `boss_roar`, `player_death`, `transform_dark/light`...). |
 
 ---
@@ -149,8 +149,8 @@ Hệ thống giao diện được thiết kế theo đúng bản mẫu `mockup_g
 ## 6. Kiểm Thử & Debug Trên VS Code (81/81 Unit Test Xanh)
 
 Bộ kiểm thử tự động trong `Assets/Tests/ContentTests.cs` đã được cấu hình sẵn trong `.vscode/launch.json` và `.vscode/tasks.json` để chạy và debug trực tiếp trên VS Code:
-- **`Cv3_AllArtAndAudioAssets_PhysicallyExistInUnityProject`**: Kiểm tra vật lý từng file PNG của 9 Spritesheets (`Idle/Walk/Attack/Death`), 12 dải VFX, bộ Tileset 8 loại địa hình + Atlas, 7 Portraits đối thoại và 5 Background Duel trong `Assets/Resources/Art/`.
-- **`Cv3_TilesetBehaviors_ChestHealsPlayer_AndCrackedTileArmsCollapse`**: Kiểm tra cơ chế bước vào ô Rương Kho Báu hồi ngay `+4 HP` và bước vào ô Gạch Nứt kích hoạt đếm ngược sập sàn đúng GDD §3.2.2.
-- **`Cv3_DesignCatalog_SpritesheetsVfxTilesetsAndPalette_AreComplete`**: Kiểm tra đủ 4 trạng thái chuyển động, 12 VFX và 5 mã màu chuẩn GDD §6.1.
+- **`AllArtAndAudioAssets_PhysicallyExistInUnityProject`**: Kiểm tra vật lý từng file PNG của 9 Spritesheets (`Idle/Walk/Attack/Death`), 12 dải VFX, bộ Tileset 8 loại địa hình + Atlas, 7 Portraits đối thoại và 5 Background Duel trong `Assets/Resources/Art/`.
+- **`TilesetBehaviors_ChestHealsPlayer_AndCrackedTileArmsCollapse`**: Kiểm tra cơ chế bước vào ô Rương Kho Báu hồi ngay `+4 HP` và bước vào ô Gạch Nứt kích hoạt đếm ngược sập sàn đúng GDD §3.2.2.
+- **`ArtAssetCatalog_SpritesheetsVfxTilesetsAndPalette_AreComplete`**: Kiểm tra đủ 4 trạng thái chuyển động, 12 VFX và 5 mã màu chuẩn GDD §6.1.
 - **`Stage1_CanBePlayedFromBoardToDuelVictory_WithoutUnity`**: Giả lập chơi trọn vẹn từ bàn cờ Phase 1 → kéo máu Boss `< 70%` → vào Duel Phase 2 → chọn thẻ chiêu Thắng Clash → Kết liễu tự động → `Victory`.
 

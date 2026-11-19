@@ -3,9 +3,7 @@
 > Tài liệu kiến trúc & phân rã tính năng, dựng từ thiết kế game trong `65CNTT_Nhom10_Tai_lieu_thiet_ke.docx`
 > (Nhóm 10 – 65CNTT: Ngô Quý Kiên, Nguyễn Tuấn Kiệt, Nguyễn Xuân Lăng, Phạm Thị Huyền Linh).
 >
-> **Cập nhật 2026-11-16:** đối chiếu với code thật — `BTH.Core` (163 file) + `BTH.Content` (30 file) đã hoàn tất **75 unit test**
-> (gồm **Duel mode** cho Phase 2 với auto finisher); Unity/UI vẫn là kế hoạch. Các chỗ ghi ✅ là đã có trong code;
-> ⬜ là còn phải làm. Tài liệu API chi tiết song song: `CORE_API_TONG_HOP.md`.
+> **Cập nhật 2026-11-19:** đối chiếu với code thật — toàn bộ 4 lớp `BTH.Core` (163 file) + `BTH.Content` + `BTH.Game` + `BTH.UI` + `BTH.Editor` cùng bộ tài nguyên đồ họa/âm thanh đã hoàn tất và vượt qua **81/81 unit test** (cả `dotnet test` lẫn Unity EditMode), đồng thời chạy trực tiếp trong Play Mode với 0 lỗi console. Tài liệu API chi tiết song song: `CORE_API_TONG_HOP.md`; báo cáo đồ họa, màn chơi & giao diện: `BAO_CAO_CV3_NGUYEN_XUAN_LANG.md`.
 
 ---
 
@@ -91,11 +89,11 @@
 | asmdef | Trạng thái | Ghi chú |
 |--------|-----------|---------|
 | `Assets/_Project/Core/BTH.Core.asmdef` | ✅ có | `noEngineReferences: true`, `autoReferenced: false`, không reference nào |
-| `Assets/Tests/BTH.Core.Tests.asmdef` | ✅ có | refs `BTH.Core` + `UnityEngine.TestRunner` + `UnityEditor.TestRunner`; `overrideReferences` + `nunit.framework.dll`; `defineConstraints: ["UNITY_INCLUDE_TESTS"]`; **`includePlatforms: ["Editor"]`** (thiếu dòng này Unity xếp nhầm sang PlayMode → 0 test) |
-| `Content/BTH.Content.asmdef` | ⬜ | refs `BTH.Core` |
-| `Game/BTH.Unity.asmdef` | ⬜ | refs `BTH.Core`, `BTH.Content`, `Unity.InputSystem` |
-| `UI/BTH.UI.asmdef` | ⬜ | refs `BTH.Core`, `BTH.Unity`, `Unity.TextMeshPro` |
-| `Editor/BTH.Editor.asmdef` | ⬜ | refs tất cả, `includePlatforms: ["Editor"]` |
+| `Assets/Tests/BTH.Core.Tests.asmdef` | ✅ có | refs `BTH.Core` + `BTH.Content` + `UnityEngine.TestRunner` + `UnityEditor.TestRunner`; `overrideReferences` + `nunit.framework.dll`; `defineConstraints: ["UNITY_INCLUDE_TESTS"]`; **`includePlatforms: ["Editor"]`** |
+| `Assets/_Project/Content/BTH.Content.asmdef` | ✅ có | refs `BTH.Core`, `noEngineReferences: true` |
+| `Assets/_Project/Game/BTH.Game.asmdef` | ✅ có | refs `BTH.Core`, `BTH.Content`, `Unity.InputSystem` |
+| `Assets/_Project/UI/BTH.UI.asmdef` | ✅ có | refs `BTH.Core`, `BTH.Content`, `BTH.Game` |
+| `Assets/_Project/Editor/BTH.Editor.asmdef` | ✅ có | refs `BTH.Core`, `BTH.Content`, `BTH.Game`, `includePlatforms: ["Editor"]` |
 
 Bật `noEngineReferences` cho `BTH.Core` là **cách rẻ nhất để cấm** lớp 1 lén dùng `UnityEngine`.
 
@@ -161,7 +159,7 @@ Assets/_Project/Core/                     163 file · 7.366 dòng
                                          + 28 event struct
 ```
 
-### 3.2 Tests — cây thật (10 file · 1.114 dòng)
+### 3.2 Tests — cây thật (11 file · 81 test)
 
 ```
 Assets/Tests/
@@ -175,24 +173,26 @@ Assets/Tests/
 ├── AiDeterminismTests.cs        4 test
 ├── SnapshotTests.cs             6 test
 ├── StageObjectiveTests.cs       10 test
-└── DuelFlowTests.cs             13 test
+├── DuelFlowTests.cs             13 test
+└── ContentTests.cs              14 test (Content, 5 ải, Tileset, Art/Audio, GameMatrix, Navigator)
 ```
 
-### 3.3 Dự kiến Content / Game / UI / Editor (chưa tạo)
+### 3.3 Content / Game / UI / Editor / Art (đã triển khai)
 
 ```
 Assets/_Project/
-├── Content/            # BTH.Content
-│   ├── Data/           # *.asset: Unit, Skill, Stage, Terrain, Clash, Duel, Dialogue
-│   ├── Skills/         # ISkillBehaviour
-│   ├── Enemies/        # IEnemyBrain
-│   ├── Bosses/         # boss brain + phase controller
-│   ├── Terrain/        # ITerrainBehaviour
-│   └── Story/          # DialogueGraph
-├── Game/               # BTH.Unity — bootstrap, view, input, audio, vfx, SO adapter
-├── UI/                 # BTH.UI — HUD, Clash/Duel screen, dialogue, menu, settings
-├── Editor/             # BTH.Editor — DataValidator, stage tool
-├── Art/, Audio/, Scenes/, Prefabs/
+├── Content/            # BTH.Content — ContentCatalog, ArtAssetCatalog, GameMatrixCatalog, TacticalNavigator
+│   ├── Units/          # UnitCatalog (9 đơn vị)
+│   ├── Skills/         # SkillCatalog + ISkillBehaviour (26 chiêu + behaviour)
+│   ├── Brains/         # BrainCatalog + TacticalBossBrain + TelegraphedZoneEffect + StepTowardsEffect
+│   ├── Terrain/        # TerrainCatalog + ITerrainBehaviour (8 loại địa hình tương tác)
+│   ├── Stages/         # StageCatalog (5 ải màn chơi + gợi ý giải đố)
+│   ├── Duels/          # DuelCatalog (5 ClashDefinition + 5 DuelDefinition)
+│   └── Dialogues/      # DialogueCatalog (3 hồi cốt truyện + thoại 5 ải + 2 Ending A/B)
+├── Game/               # BTH.Game — GameBootstrap, ArtCatalog, UnitSpriteAnimator, VfxPopupManager, AudioCatalog
+├── UI/                 # BTH.UI — HudSpecPresenter (bảng màu Dark Fantasy & trình bày giao diện)
+├── Editor/             # BTH.Editor — ArtImportPostprocessor (tự động cấu hình Pixel Art & menu chạy nhanh)
+└── Art/                # Spritesheets (9 unit × 4 trạng thái), Tilesets (25 tile + atlas), VFX (12 strip), Portraits (7), Backgrounds (5)
 ```
 
 **Quy ước:**
@@ -243,16 +243,16 @@ Trạng thái cột **Core**: ✅ = đã có + test; ⬜ = chưa. Content/Unity/
 | F09 | Trạng thái | `IStatusEffect`, `StatusSet` | `StatusContext`, `StatusSet`, 5 status | icon trên `UnitView` | ✅ |
 | F10 | Chết & tua ngược / RESET | `GameSnapshot`, `ISnapshotStore`, `SnapshotTrigger` | `SnapshotService`, `SnapshotStore` | `IRunKnowledge`, nút RESET | ✅ |
 | F11 | Màn chơi, mục tiêu, thắng–thua | `StageDefinition`, `IObjectiveEvaluator`, `StageResult` | `ObjectiveEvaluator` | 5 `StageDataAsset`, ending | ✅ |
-| F12 | Cốt truyện, hội thoại, 2 kết thúc | `DialogueNode`, `DialogueGraph`, `DialogueRunner` | `DialogueRunner` | `DialogueAsset`, `DialogueView` | ✅ |
-| F13 | HUD & bảng lệnh | chỉ event | — | `HudView/Presenter`, `CommandBarView` | ⬜ |
-| F14 | Clash/Duel UI | `ClashPrediction`, `ClashOption` | — | `ClashScreenView`, `DuelScreenView`, badge | ⬜ |
-| F15 | Menu & cài đặt | `ISettingsStore` (Unity) | — | `SettingsView`, `PlayerPrefsSettingsStore` | ⬜ |
-| F16 | Âm thanh BGM/SFX | `IAudioService` (Unity) | — | `UnityAudioService`, `AudioCatalogAsset` | ⬜ |
-| F17 | Điều khiển chuột + phím | `IInputSource` (Unity) | — | `UnityInputSource`, `SelectionController` | ⬜ |
-| F18 | Hình ảnh, hoạt ảnh, VFX | event | — | `SpriteAnimator`, `VfxPlayer`, `BattleCamera` | ⬜ |
-| F19 | Lưu & tải | `ISettingsStore` | — | — (không lưu tiến trình theo ADR-05) | ⬜ |
-| F20 | Công cụ Editor & test | — | — | `DataValidator`, `StageEditorWindow` | ⬜ |
-| F21 | **Duel Phase 2 (đấu chiêu 1v1)** | `IClashDuel`, `DuelDefinition`, `DuelState`, `ClashMath` | `ClashDuel` | `DuelCatalog`, `DuelScreenView` | ✅ |
+| F12 | Cốt truyện, hội thoại, 2 kết thúc | `DialogueNode`, `DialogueGraph`, `DialogueRunner` | `DialogueRunner` | `DialogueCatalog`, `GameBootstrap.DrawDialogueOverlay` | ✅ |
+| F13 | HUD & bảng lệnh | chỉ event | — | `GameBootstrap.DrawLeftHudPanel`, `HudSpecPresenter` | ✅ |
+| F14 | Clash/Duel UI | `ClashPrediction`, `ClashOption` | — | `GameBootstrap.DrawDuelScreen` (3 thẻ + badge xanh/vàng/đỏ) | ✅ |
+| F15 | Menu & cài đặt | `GameOptionsModel` (Unity) | — | `GameBootstrap.DrawSettingsModal` (PlayerPrefs) | ✅ |
+| F16 | Âm thanh BGM/SFX | `IAudioService` (Unity) | — | `AudioCatalog` (2 BGM + 14 SFX) | ✅ |
+| F17 | Điều khiển chuột + phím | Input System (Unity) | — | `GameBootstrap` (`[G/S/1/2/3/E/D/R/X/Space]` + chuột + A* path highlight) | ✅ |
+| F18 | Hình ảnh, hoạt ảnh, VFX | event | — | `ArtCatalog`, `UnitSpriteAnimator` (Idle/Walk/Attack/Death), `VfxPopupManager` | ✅ |
+| F19 | Lưu & tải | `GameOptionsModel` | — | `PlayerPrefs` (chỉ lưu cài đặt theo ADR-05) | ✅ |
+| F20 | Công cụ Editor & test | — | — | `ArtImportPostprocessor`, `Tools/slice_assets.py` | ✅ |
+| F21 | **Duel Phase 2 (đấu chiêu 1v1)** | `IClashDuel`, `DuelDefinition`, `DuelState`, `ClashMath` | `ClashDuel` | `DuelCatalog`, `GameBootstrap.DrawDuelScreen` | ✅ |
 
 ### 4.2 Ghi chú thiết kế cho các tính năng then chốt
 
@@ -578,11 +578,11 @@ Luật (đã chốt — xem `Docs/QUYET_DINH.md`):
 | 14 | GameSession façade | ✅ | `StageObjectiveTests`, `DuelFlowTests` |
 | 15 | RunKnowledge ngoài rewind | ✅ | `SnapshotTests` |
 | 16 | **Duel Phase 2** | ✅ | `DuelFlowTests` 13 test |
-| 17 | Input → ActionRequest | ⬜ | Unity layer |
-| 18 | HUD / command bar | ⬜ | UI |
-| 19 | Clash/Duel presenter | ⬜ | UI |
-| 20 | Dialogue UI + 2 ending | ⬜ | UI |
-| 21 | Settings + audio | ⬜ | Unity |
+| 17 | Input → ActionRequest | ✅ | `GameBootstrap` + `TacticalNavigator` (`ContentTests`) |
+| 18 | HUD / command bar | ✅ | `GameBootstrap.DrawLeftHudPanel` + `HudSpecPresenter` |
+| 19 | Clash/Duel presenter | ✅ | `GameBootstrap.DrawDuelScreen` |
+| 20 | Dialogue UI + 2 ending | ✅ | `DialogueCatalog` + `GameBootstrap.DrawDialogueOverlay` (`ContentTests`) |
+| 21 | Settings + audio | ✅ | `GameOptionsModel` + `AudioCatalog` (`ContentTests`) |
 
 ---
 
@@ -827,15 +827,18 @@ Hành vi cũ chỉ cần chọn brain — không code.
 
 ## 10. Lộ trình
 
-### 10.1 Đã xong (Core, 2026-11-15)
+### 10.1 Đã xong (Core + Content + Unity/UI + Art/Audio, 2026-11-19)
 
 | Hạng mục | Kết quả |
 |----------|---------|
-| Hạ tầng | asmdef Core (noEngineReferences), asmdef Tests (Editor-only), `InternalsVisibleTo`, harness dotnet ngoài Unity |
+| Hạ tầng | 6 asmdef (`BTH.Core`, `BTH.Content`, `BTH.Game`, `BTH.UI`, `BTH.Editor`, `BTH.Core.Tests`), `InternalsVisibleTo`, harness dotnet ngoài Unity |
 | Core P0–P3 | Grid, Units, Turn, Actions, Damage/Effect/Status, Clash, AI/Telegraph, Snapshot/RunKnowledge, Objective, GameSession, Dialogue — 163 file |
 | Duel Phase 2 | `ClashDuel` + 6 file dữ liệu/kết quả + tích hợp Session/Validator/Executor/Snapshot/Objective/Turn |
-| Test | 75/75 xanh trên `dotnet test` (~155 ms) và Unity 6000.6.7f1 EditMode |
-| Docs | KIEN_TRUC (bản này), CORE_API_TONG_HOP, THIET_KE_PHASE2_DUEL, QUYET_DINH, KE_HOACH_HOAN_THANH_GAME |
+| Content (P1) | `UnitCatalog` (9 unit), `SkillCatalog` (26 chiêu), `BrainCatalog` (8 brain), `TerrainCatalog` (8 địa hình tương tác), `StageCatalog` (5 ải), `DuelCatalog` (5 Duel), `DialogueCatalog` (3 hồi + 5 ải + 2 Ending), `GameMatrixCatalog`, `TacticalNavigator`, `ArtAssetCatalog` |
+| Art & Audio (P5) | `Tools/slice_assets.py` tách nền 9 Spritesheets (`Idle/Walk/Attack/Death`), 25 Tiles + Atlas, 12 VFX strips, 7 Portraits, 5 Duel Backgrounds, 2 BGM + 14 SFX |
+| Unity & UI (P2–P4) | `GameBootstrap`, `ArtCatalog`, `UnitSpriteAnimator`, `VfxPopupManager`, `AudioCatalog`, `HudSpecPresenter` — chạy trọn 5 ải + Duel + Rewind + 2 Ending ngay khi bấm Play trong Unity Editor |
+| Test | **81/81 xanh** trên `dotnet test` (~90 ms) và Unity 6000.6.7f1 EditMode; Play Mode kiểm chứng 0 lỗi & 0 cảnh báo console |
+| Docs | KIEN_TRUC (bản này), CORE_API_TONG_HOP, THIET_KE_PHASE2_DUEL, QUYET_DINH, KE_HOACH_HOAN_THANH_GAME, BAO_CAO_CV3_NGUYEN_XUAN_LANG |
 
 ### 10.2 Còn lại (theo `Docs/KE_HOACH_HOAN_THANH_GAME.md`)
 
