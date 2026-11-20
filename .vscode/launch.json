@@ -5,6 +5,19 @@
             "name": "Attach to Unity",
             "type": "vstuc",
             "request": "attach"
+        },
+        {
+            "name": "Run Unit Tests (BTH.Core.Tests)",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "dotnet",
+            "args": [
+                "test",
+                "${workspaceFolder}/Tools/CoreTests/CoreTests.csproj",
+                "--logger:console;verbosity=normal"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole"
         }
-     ]
+    ]
 }

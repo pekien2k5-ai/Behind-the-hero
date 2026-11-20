@@ -1,25 +1,23 @@
 # KẾ HOẠCH HOÀN THÀNH GAME — "Behind the Hero"
 
-> Lập 2026-11-15, cập nhật 2026-11-16 sau khi **P1 Content hoàn tất** (30 file, 75 test xanh cả dotnet và Unity) — xem `Docs/QUYET_DINH.md`, `Docs/THIET_KE_PHASE2_DUEL.md`.
+> Lập 2026-11-15, cập nhật **2026-11-19** sau khi hoàn tất toàn bộ **P0 → P5** (`BTH.Core`, `BTH.Content`, `BTH.Game`, `BTH.UI`, `BTH.Editor`, bộ Art PNG đã tách nền & Audio BGM/SFX, **81/81 unit test xanh** cả `dotnet test` lẫn Unity EditMode, chạy trực tiếp trong Play Mode với 0 lỗi console) — xem `Docs/QUYET_DINH.md`, `Docs/THIET_KE_PHASE2_DUEL.md`, `Docs/BAO_CAO_CV3_NGUYEN_XUAN_LANG.md`.
 > Căn cứ: `KIEN_TRUC_UNITY_BEHIND_THE_HERO.md`, tài liệu thiết kế nhóm 10, trạng thái code thực tế của repo `Behind-the-hero`.
-> Ước lượng theo **ngày công 6–8 giờ**, một người làm code + agent hỗ trợ; art dùng lại bộ có sẵn.
 
 ---
 
-## 0. Hiện trạng (đã kiểm chứng, không phải kế hoạch)
+## 0. Hiện trạng (đã kiểm chứng 2026-11-19)
 
 | Hạng mục | Trạng thái |
 |---|---|
 | **Core** `Assets/_Project/Core` | ✅ **163 file**, 6.608 dòng. Grid, Units, Turn, Actions, Combat (skill/effect/status/clash/**duel**), Ai, Run (rules/stage/snapshot/event/dialogue/session) |
-| **Duel mode (Phase 2)** | ✅ **đã có trong Core**: `TurnPhase.Duel`, `ClashDuel`/`DuelState`/`IClashDuel`, `EnterDuel` khi boss <70%, finisher, `DuelSnapshot`, 2 event Duel; route validator/executor/snapshot xong; 13 test Duel. Còn nối transition + UI (P2/P3) |
-| **Test** `Assets/Tests` | ✅ **75 test / 10 bộ**, xanh `dotnet test` (~140 ms) và **Unity EditMode 75/75** (2026-11-16) |
-| **Harness** `Tools/CoreTests` | ✅ chạy test ngoài Unity bằng .NET SDK bundled của Unity; đã include cả Content |
-| **Content** `Assets/_Project/Content` | ✅ **30 file / 2.035 dòng**: 29 chiêu + 10 behaviour, 9 unit, 8 brain, terrain, 5 màn, 5 Duel, 11 đoạn thoại, `ContentCatalog` |
-| **Unity presentation** (board, unit view, input, camera, VFX, duel screen) | ❌ chưa có |
-| **UI** (HUD, menu, clash/duel UI, dialogue, transition) | ❌ chưa có |
-| **Build** | ❌ chưa build lần nào |
-| **Art** `D:\test\assetsRaw` | 🟡 có: 8 spritesheet JPG 1024×1024 (grid 8×8, frame 128×128, nền xám — cần tách nền), 7 portrait 1024×1024, tileset dungeon, 3 sheet VFX, mockup 1376×768, Kenney (1-bit, tiny-dungeon, UI pack, interface sounds, RPG audio), 168 file .ogg (đủ `forest_theme`, `boss_theme`, `attack1-3`, `boss_attack`, `boss_roar`, `transform_dark/light`, `ui_confirm/select`…) |
-| **Git** | ✅ `main` + nhánh `kien/dev`, repo GitHub đã đẩy 410 file (commit `adb55f6`) |
+| **Duel mode (Phase 2)** | ✅ **đã hoàn tất từ Core tới UI**: `TurnPhase.Duel`, `ClashDuel`/`DuelState`/`IClashDuel`, `EnterDuel` khi boss <70%, auto finisher, `DuelSnapshot`, transition + màn hình Duel 3 thẻ chiêu + dự báo Thắng/Hòa/Thua |
+| **Test** `Assets/Tests` | ✅ **81 test / 11 bộ**, xanh `dotnet test` (~90 ms) và **Unity EditMode 81/81** (2026-11-19) |
+| **Harness** `Tools/CoreTests` | ✅ chạy test ngoài Unity bằng .NET 8 SDK; đã include cả Core + Content |
+| **Content** `Assets/_Project/Content` | ✅ **đã hoàn tất**: 9 unit (`UnitCatalog`), 26 chiêu + behaviour (`SkillCatalog`), 8 brain (`BrainCatalog`), 8 loại địa hình tương tác (`TerrainCatalog`), 5 màn (`StageCatalog`), 5 Duel (`DuelCatalog`), cốt truyện 3 hồi + thoại 5 ải + 2 Ending (`DialogueCatalog`), `GameMatrixCatalog`, `TacticalNavigator`, `ArtAssetCatalog`, `ContentCatalog` |
+| **Unity presentation** `Assets/_Project/Game` | ✅ **đã hoàn tất**: `GameBootstrap`, `ArtCatalog`, `UnitSpriteAnimator` (4 trạng thái `Idle/Walk/Attack/Death`), `VfxPopupManager` (12 dải VFX + popup sát thương), `AudioCatalog`, `GameOptionsModel` |
+| **UI** `Assets/_Project/UI` & `GameBootstrap` | ✅ **đã hoàn tất**: Cột HUD chiến thuật bên trái, Top Bar chọn 5 ải + Thanh máu Boss (vạch 70% Duel), Khung chân dung đối thoại + lựa chọn 2 Ending A/B, Màn hình Phase 2 Duel, Bảng Cài đặt (`Settings`) |
+| **Art & Audio** `Assets/_Project/Art` & `Assets/Resources` | ✅ **đã tách nền & tích hợp**: `Tools/slice_assets.py` xuất 9 Spritesheets 512×512 PNG (`Idle/Walk/Attack/Death`), 25 Tiles 128×128 + `dungeon_tileset_atlas.png`, 12 VFX strips, 7 Portraits 512×512, 5 Duel Backgrounds 960×540, 2 BGM + 14 SFX |
+| **Git** | ✅ `main`, `kien/dev`, `l4ngx` (đã commit & push đầy đủ lên GitHub) |
 
 ### Việc kỹ thuật còn lại trước khi làm UI
 
@@ -73,7 +71,7 @@ Scene: **1 scene `Game.unity`** gồm `Bootstrap`, `BoardRoot`, `UnitRoot`, `FxR
 
 ## 3. Các pha triển khai
 
-### P0 — Chốt quyết định & dựng khung (0,5–1 ngày)
+### P0 — Chốt quyết định & dựng khung ✅ **XONG 2026-11-19**
 
 | Việc | Output |
 |---|---|
@@ -106,7 +104,7 @@ Scene: **1 scene `Game.unity`** gồm `Bootstrap`, `BoardRoot`, `UnitRoot`, `FxR
 
 ---
 
-### P2 — Unity presentation (3–4 ngày)
+### P2 — Unity presentation ✅ **XONG 2026-11-19** (`Assets/_Project/Game/`)
 
 | # | Việc | Ghi chú |
 |---|---|---|
@@ -123,7 +121,7 @@ Scene: **1 scene `Game.unity`** gồm `Bootstrap`, `BoardRoot`, `UnitRoot`, `FxR
 
 ---
 
-### P3 — UI (4–5 ngày)
+### P3 — UI ✅ **XONG 2026-11-19** (`Assets/_Project/UI/` & `GameBootstrap`)
 
 | # | Việc |
 |---|---|
@@ -139,7 +137,7 @@ Scene: **1 scene `Game.unity`** gồm `Bootstrap`, `BoardRoot`, `UnitRoot`, `FxR
 
 ---
 
-### P4 — Game flow: Duel + 5 ải (1–1,5 ngày; Core Duel đã xong)
+### P4 — Game flow: Duel + 5 ải ✅ **XONG 2026-11-19**
 
 | # | Việc | Ghi chú |
 |---|---|---|
@@ -154,7 +152,7 @@ Scene: **1 scene `Game.unity`** gồm `Bootstrap`, `BoardRoot`, `UnitRoot`, `FxR
 
 ---
 
-### P5 — Art, animation, audio (4–5 ngày, song song P2/P3)
+### P5 — Art, animation, audio ✅ **XONG 2026-11-19** (`Tools/slice_assets.py` & `Assets/_Project/Art/` + `Assets/Resources/`)
 
 | # | Việc | Cách làm |
 |---|---|---|
