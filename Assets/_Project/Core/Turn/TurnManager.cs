@@ -185,6 +185,7 @@ namespace BTH.Core.Turn
             }
 
             SetPhase(TurnPhase.Duel);
+            _state.Snapshots?.PushCheckpoint(SnapshotTrigger.ClashStart);
         }
 
         public void FinishStage(StageResult result)

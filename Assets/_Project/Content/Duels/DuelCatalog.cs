@@ -121,7 +121,7 @@ namespace BTH.Content.Duels
         public static ClashDefinition CreateClashStage4()
         {
             var rules = new ClashRuleTable { DefaultBonus = 3 };
-            rules.Add(new ClashRule("temporal-step", "hellfire-greatsword", 3));
+            rules.Add(new ClashRule("temporal-step", "hellfire-greatsword", 5));
             rules.Add(new ClashRule("dodge", "hellfire-greatsword", 5));
             rules.Add(new ClashRule("blade-guard", "hellfire-greatsword", 4));
             rules.Add(new ClashRule("swift-slash", "hellfire-greatsword", 1));

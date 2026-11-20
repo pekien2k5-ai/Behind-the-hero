@@ -41,9 +41,19 @@ namespace BTH.Content.Terrain
         }
     }
 
-    /// <summary>
-    /// Ô Rương kho báu (GDD §3.2.2): Người chơi bước vào ô này sẽ nhặt được thuốc thánh hồi phục máu tức thời (+4 HP).
-    /// </summary>
+    public readonly struct ChestOpenedEvent
+    {
+        public readonly GridCoord Coord;
+        public readonly int HpRestored;
+
+        public ChestOpenedEvent(GridCoord coord, int hpRestored)
+        {
+            Coord = coord;
+            HpRestored = hpRestored;
+        }
+    }
+
+    /// <summary>Ô Rương kho báu hồi phục tối đa 4 HP khi người chơi bước vào.</summary>
     public sealed class ChestTerrainBehaviour : ITerrainBehaviour
     {
         public const int HealAmount = 4;
@@ -53,6 +63,7 @@ namespace BTH.Content.Terrain
         {
             if (unit == null || !unit.IsAlive || unit.Faction != UnitFaction.Player || state == null) return;
 
+            int hpBefore = unit.Hp;
             var queue = new EffectQueue();
             queue.Enqueue(new HealEffect(unit.Id, HealAmount));
             var ctx = new EffectContext(state, queue, unit.Id, coord, unit.Id, coord, null, HealAmount, ElementId.Holy);
@@ -61,6 +72,7 @@ namespace BTH.Content.Terrain
             // Mở rương xong chuyển ô về Sàn đá thường
             state.Grid.SetTerrain(coord, TerrainId.Floor, TerrainFlags.None, 1, 0);
             state.Knowledge?.Increment("chests-opened", 1);
+            state.Events?.Publish(new ChestOpenedEvent(coord, unit.Hp - hpBefore));
         }
     }
 

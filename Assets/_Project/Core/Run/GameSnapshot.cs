@@ -14,7 +14,7 @@ namespace BTH.Core.Run
     {
         public GameSnapshot(int turnIndex, TurnPhase phase, StageResult result, uint randomState,
             CellState[] cells, IReadOnlyList<GridCoord> lockedCells, UnitSnapshot[] units,
-            IReadOnlyList<EnemyIntent> intents, DuelSnapshot duel = null)
+            IReadOnlyList<EnemyIntent> intents, DuelSnapshot duel = null, int? bossPhase = null)
         {
             TurnIndex = turnIndex;
             Phase = phase;
@@ -25,6 +25,7 @@ namespace BTH.Core.Run
             Units = units ?? Array.Empty<UnitSnapshot>();
             Intents = intents ?? Array.Empty<EnemyIntent>();
             Duel = duel;
+            BossPhase = bossPhase ?? (duel == null ? 1 : 2);
         }
 
         public int TurnIndex { get; }
@@ -46,11 +47,13 @@ namespace BTH.Core.Run
         /// <summary>Ảnh chụp Duel; null nếu snapshot được chụp ngoài Duel.</summary>
         public DuelSnapshot Duel { get; }
 
+        public int BossPhase { get; }
+
         /// <summary>So sánh nội dung — dùng trong SnapshotTests: Restore(Capture()) phải bằng nhau.</summary>
         public bool ContentEquals(GameSnapshot other)
         {
             if (other == null || TurnIndex != other.TurnIndex || Phase != other.Phase ||
-                Result != other.Result || RandomState != other.RandomState ||
+                Result != other.Result || RandomState != other.RandomState || BossPhase != other.BossPhase ||
                 LockedCells.Count != other.LockedCells.Count || Units.Length != other.Units.Length ||
                 Cells.Length != other.Cells.Length)
             {

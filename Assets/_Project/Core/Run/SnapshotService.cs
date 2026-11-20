@@ -45,7 +45,7 @@ namespace BTH.Core.Run
             var intents = CaptureIntents();
 
             return new GameSnapshot(_turn.TurnIndex, _turn.Phase, _state.Result, _state.Random.State,
-                cells, locked, units, intents, _state.Duel != null ? _state.Duel.Capture() : null);
+                cells, locked, units, intents, _state.Duel?.Capture(), _state.BossPhase?.Phase);
         }
 
         public void Restore(GameSnapshot snapshot)
@@ -118,6 +118,11 @@ namespace BTH.Core.Run
                 }
             }
 
+            if (_state.BossPhase is BossPhaseController bossPhase)
+            {
+                bossPhase.RestorePhase(snapshot.BossPhase);
+            }
+
             _state.Result = snapshot.Result;
             if (_state.Turn is TurnManager concreteTurn)
             {
@@ -144,8 +149,14 @@ namespace BTH.Core.Run
             int index = _checkpoints.Count - 1;
             var trigger = _checkpointTriggers[index];
             var snapshot = _checkpoints[index];
-            _checkpoints.RemoveAt(index);
-            _checkpointTriggers.RemoveAt(index);
+            // Có thể thử lại Duel nhiều lần. Tua tiếp khi đã ở checkpoint vẫn lùi được về bàn cờ.
+            bool retainDuelCheckpoint = trigger == SnapshotTrigger.ClashStart && snapshot.Phase == TurnPhase.Duel &&
+                !snapshot.ContentEquals(Capture());
+            if (!retainDuelCheckpoint)
+            {
+                _checkpoints.RemoveAt(index);
+                _checkpointTriggers.RemoveAt(index);
+            }
 
             Restore(snapshot);
             _events?.Publish(new RewindPerformedEvent(trigger, _turn.TurnIndex));

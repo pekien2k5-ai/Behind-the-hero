@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using BTH.Content;
@@ -12,6 +13,7 @@ using BTH.Core.Combat;
 using BTH.Core.Grid;
 using BTH.Core.Run;
 using BTH.Core.Turn;
+using BTH.Core.Units;
 using NUnit.Framework;
 
 namespace BTH.Core.Tests
@@ -108,16 +110,76 @@ namespace BTH.Core.Tests
         }
 
         [Test]
-        public void Stage2_DuelWin_AppliesPoisonReverseToPlagueWitch()
+        public void Stage2_ConsecutiveDuelWins_DoNotResetPoisonTicks()
         {
             var session = ContentCatalog.CreateSession();
             session.StartStage("stage-2");
             session.EnterDuel();
 
             var boss = session.State.Units.Boss;
-            var winOpt = session.State.Duel.GetOptions().First(o => o.Prediction.Result == ClashResult.Win);
-            session.TryExecute(ActionRequest.ClashSkill(session.State.Units.Player.Id, winOpt.SkillId));
-            Assert.IsTrue(boss.Statuses.Has(StatusIds.Poison));
+            var player = session.State.Units.Player;
+            var ticks = new List<int>();
+            using var subscription = session.Events.Subscribe<DamageDealtEvent>((in DamageDealtEvent e) =>
+            {
+                if (e.Source == UnitId.None && e.Target == boss.Id && e.Element == ElementId.Necrotic)
+                {
+                    ticks.Add(e.Amount);
+                }
+            });
+
+            var choice = ActionRequest.ClashSkill(player.Id, "necrotic-ward");
+            Assert.That(session.TryExecute(choice).Success, Is.True);
+            Assert.That(session.State.Duel.State.LastResult, Is.EqualTo(ClashResult.Win));
+            Assert.That(ticks, Is.Empty);
+            Assert.That(boss.Statuses.GetRemaining(StatusIds.Poison), Is.EqualTo(2));
+
+            Assert.That(session.TryExecute(choice).Success, Is.True);
+            Assert.That(session.State.Duel.State.LastResult, Is.EqualTo(ClashResult.Win));
+            CollectionAssert.AreEqual(new[] { 3 }, ticks);
+            Assert.That(boss.Statuses.GetRemaining(StatusIds.Poison), Is.EqualTo(1));
+
+            Assert.That(session.TryExecute(choice).Success, Is.True);
+            CollectionAssert.AreEqual(new[] { 3, 3 }, ticks);
+            Assert.That(boss.Statuses.Has(StatusIds.Poison), Is.False);
+        }
+
+        [Test]
+        public void Stage3_TelegraphsFourCellsForVoidSpearOnEvenTurn()
+        {
+            var session = ContentCatalog.CreateSession();
+            session.StartStage("stage-3");
+            var state = session.State;
+            var boss = state.Units.Boss;
+            Assert.That(state.Telegraph.TryGet(boss.Id, out var thrust), Is.True);
+            Assert.That(thrust.SkillId, Is.EqualTo("spear-thrust"));
+            Assert.That(thrust.DangerCells.Count, Is.LessThan(4));
+
+            Assert.That(session.EndTurn().Success, Is.True);
+            Assert.That(state.Telegraph.TryGet(boss.Id, out var beam), Is.True);
+            Assert.That(beam.SkillId, Is.EqualTo("void-spear-beam"));
+            CollectionAssert.AreEqual(GridShapes.Row(boss.Center, -1, 0, 4), beam.DangerCells);
+        }
+
+        [Test]
+        public void Stage3_VoidSpearDoesNotHitPlayerBehindPillar()
+        {
+            var session = ContentCatalog.CreateSession();
+            var stage = StageCatalog.CreateStage3();
+            var pillar = new GridCoord(3, 4);
+            stage.Terrains.Add(TerrainCatalog.CreateOverride(pillar.X, pillar.Y, TerrainId.Wall));
+            session.StartStage(stage);
+            var state = session.State;
+            var player = state.Units.Player;
+
+            Assert.That(session.EndTurn().Success, Is.True);
+            Assert.That(state.Units.Boss.Center + GridCoord.West, Is.EqualTo(pillar));
+            Assert.That(state.Telegraph.TryGet(state.Units.Boss.Id, out var beam), Is.True);
+            Assert.That(beam.SkillId, Is.EqualTo("void-spear-beam"));
+            Assert.That(beam.DangerCells, Is.Empty);
+
+            int hpBeforeBeam = player.Hp;
+            Assert.That(session.EndTurn().Success, Is.True);
+            Assert.That(player.Hp, Is.EqualTo(hpBeforeBeam));
         }
 
         [Test]
@@ -143,6 +205,10 @@ namespace BTH.Core.Tests
             Assert.AreEqual(2, boss.SizeY);
             Assert.AreEqual(4, boss.Footprint.Count);
             Assert.AreEqual(3, session.State.Stage.Duel.FinisherCount);
+
+            session.EnterDuel();
+            var temporalStep = session.State.Duel.GetOptions().Single(option => option.SkillId == "temporal-step");
+            Assert.That(temporalStep.Prediction.Bonus, Is.EqualTo(5));
         }
 
         [Test]
@@ -165,7 +231,9 @@ namespace BTH.Core.Tests
         public void TilesetBehaviors_ChestHealsPlayer_AndCrackedTileArmsCollapse()
         {
             var session = ContentCatalog.CreateSession();
-            session.StartStage("stage-1");
+            var stage = StageCatalog.CreateStage1();
+            stage.PlayerSpawn = new GridCoord(3, 5);
+            session.StartStage(stage);
             var state = session.State;
             var player = state.Units.Player;
 
@@ -175,13 +243,15 @@ namespace BTH.Core.Tests
 
             var chestCell = new GridCoord(3, 6);
             Assert.AreEqual(TerrainId.Chest, state.Grid.Get(chestCell).Terrain);
-            TerrainCatalog.HandleUnitEnteredCell(player, chestCell, state);
+            Assert.That(session.TryExecute(ActionRequest.Move(player.Id, chestCell)).Success, Is.True);
 
             Assert.AreEqual(hpDamaged + ChestTerrainBehaviour.HealAmount, player.Hp);
             Assert.AreEqual(TerrainId.Floor, state.Grid.Get(chestCell).Terrain);
+            Assert.That(state.Knowledge.GetCounter("chests-opened"), Is.EqualTo(1));
 
             var crackedCell = new GridCoord(3, 4);
-            TerrainCatalog.HandleUnitEnteredCell(player, crackedCell, state);
+            Assert.That(session.EndTurn().Success, Is.True);
+            Assert.That(session.TryExecute(ActionRequest.Move(player.Id, crackedCell)).Success, Is.True);
             Assert.AreEqual(1, state.Grid.Get(crackedCell).TurnsUntilCollapse);
         }
 

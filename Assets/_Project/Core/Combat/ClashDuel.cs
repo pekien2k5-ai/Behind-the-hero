@@ -134,6 +134,12 @@ namespace BTH.Core.Combat
             {
                 case ClashResult.Win:
                     applied = _definition.CreateWinEffect();
+                    if (applied?.Id == StatusIds.Poison && _boss.Statuses.Has(StatusIds.Poison))
+                    {
+                        // Độc đang chạy phải được tick đủ hai vòng trước khi gắn lại.
+                        applied = null;
+                    }
+
                     if (applied != null && _boss.IsAlive)
                     {
                         AddStatus(_boss, applied);
@@ -168,6 +174,10 @@ namespace BTH.Core.Combat
             if (result == ClashResult.Win)
             {
                 damageToBoss = ApplyFinishers();
+                if (applied?.Id == StatusIds.Stagger && _boss.Statuses.Remove(StatusIds.Stagger))
+                {
+                    _state.Events.Publish(new StatusExpiredEvent(_boss.Id, StatusIds.Stagger));
+                }
             }
 
             // Kết thúc vòng: tick status như EndTurn bàn cờ (Poison gây damage, Flanked/Guard hết hạn).

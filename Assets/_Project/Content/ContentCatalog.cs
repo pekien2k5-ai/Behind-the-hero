@@ -1,6 +1,7 @@
 using BTH.Content.Brains;
 using BTH.Content.Skills;
 using BTH.Content.Stages;
+using BTH.Content.Terrain;
 using BTH.Core.Combat;
 using BTH.Core.Run;
 
@@ -21,7 +22,8 @@ namespace BTH.Content
                 clash: new ClashResolver(),
                 elements: elements,
                 snapshotCapacity: 12,
-                seed: seed);
+                seed: seed,
+                onUnitEnteredCell: TerrainCatalog.HandleUnitEnteredCell);
 
             var stages = StageCatalog.All();
             for (int i = 0; i < stages.Count; i++)
