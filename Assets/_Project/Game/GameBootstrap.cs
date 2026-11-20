@@ -1381,7 +1381,9 @@ namespace BTH.Game
                     : (res == StageResult.EndingB
                         ? "★ KẾT CỤC B: TỘI ĐỒ ẨN CƯ ★"
                         : "★ CHIẾN THẮNG MÀN CHƠI (VICTORY) ★");
-                desc = "Bạn đã vượt qua thử thách giải đố bàn cờ và hạ gục Boss trong màn Duel Phase 2!";
+                desc = res == StageResult.EndingA
+                    ? "Kẻ Lang Thang buông gươm và chết dưới nhát kiếm của Eosphoros. Lời nguyền thời gian tan biến."
+                    : "Bạn đã vượt qua thử thách giải đố bàn cờ và hạ gục Boss trong màn Duel Phase 2!";
             }
             else
             {
