@@ -15,7 +15,11 @@ namespace BTH.Game
 
     public static class AudioCatalog
     {
-        public static readonly string[] BgmTracks = { "forest_theme", "boss_theme" };
+        public const string StoryTheme = "forest_theme";
+        public const string DuelTheme = "boss_theme";
+        public const float DuelPitch = 0.92f;
+
+        public static readonly string[] BgmTracks = { StoryTheme, DuelTheme };
 
         public static readonly string[] SfxTracks =
         {
@@ -39,6 +43,9 @@ namespace BTH.Game
             ["boss_roar"] = "SFX Tiếng gầm bộc phát nộ khí khi Boss xuống dưới 70% HP (Chuyển Phase 2)",
             ["player_death"] = "SFX Tiếng vỡ tan của đồng hồ thời gian khi kích hoạt vòng lặp tử vong",
             ["enemy_death"] = "SFX Tiếng quái vật / Boss gục ngã",
+            ["player_hurt"] = "SFX Kẻ Lang Thang trúng đòn và còn sống",
+            ["enemy_hurt"] = "SFX Quái vật hoặc Boss trúng đòn và còn sống",
+            ["checkpoint"] = "SFX Xác nhận khi mở rương",
             ["transform_dark"] = "SFX Hiệu ứng ma thuật hắc ám & Tua ngược thời gian (Rewind)",
             ["transform_light"] = "SFX Hiệu ứng Thánh thuật & Khiên Hộ Mệnh (Guard / Protect)",
             ["dash"] = "SFX Tiếng bước chân lướt qua ô cờ",

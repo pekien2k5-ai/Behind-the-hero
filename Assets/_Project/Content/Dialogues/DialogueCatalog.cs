@@ -10,22 +10,101 @@ namespace BTH.Content.Dialogues
     /// </summary>
     public static class DialogueCatalog
     {
-        public static IReadOnlyList<(string Title, string Content)> GetThreeActsLore() => new List<(string, string)>
+        public const string Narrator = "Người dẫn chuyện";
+
+        private static readonly string[] Oakhaven =
         {
-            ("Hồi I: Thảm họa Oakhaven & Lời nguyền Khởi sinh",
-             "Năm thứ 12 triều đại Thiên hoàng thứ XIV, thị trấn Oakhaven bị san phẳng bởi quân đoàn Quỷ Vương. Kẻ lang thang sống sót nhưng mang lời nguyền hoại tử thể xác: mỗi khi ngã xuống, thời gian lập tức quay ngược lại. Giữa lúc tuyệt vọng, Dũng giả Eosphoros đã chìa tay cứu vớt và trao cho hắn thanh đoản kiếm."),
-            ("Hồi II: Chặng đường Thảo phạt & Mầm mống Đố kỵ",
-             "Qua hàng trăm lần bị quái vật xé xác và tua ngược thời gian, Kẻ lang thang giải mã mọi quỹ đạo đòn đánh, bộc phát kỹ năng thực chiến làm lu mờ cả ánh hào quang của Thần điện. Cảm giác bất lực khi bị một kẻ vô danh vượt mặt đã gieo mầm đố kỵ ăn mòn tâm trí Eosphoros."),
-            ("Hồi III: Khúc khải hoàn đẫm máu & Bi kịch dưới Mật thất",
-             "Sau khi Quỷ Vương Malkor gục ngã, Eosphoros độc chiếm toàn bộ vinh quang rồi lừa người đồng đội xuống mật thất dưới đáy Thánh điện để diệt khẩu nhằm bảo vệ bức tượng đài hoàn mỹ. Người chơi đối diện với ngã rẽ định mệnh: Kết thúc A (Lời nói dối vĩnh hằng) hoặc Kết thúc B (Tội đồ ẩn cư).")
+            "Năm thứ 12 triều đại Thiên hoàng thứ XIV, bầu trời vương quốc nhuốm một màu đỏ quạch của máu và tro tàn. Thị trấn Oakhaven trù phú – cửa ngõ kinh thành – bị san phẳng chỉ trong một đêm bởi quân đoàn Quỷ vương.",
+            "Hơn 5.000 dân thường tan thành tro bụi, số ít sống sót trở thành lưu dân tị nạn khốn cùng. Trong dòng người ấy có hắn.",
+            "May mắn sống sót nhưng hắn lại gánh chịu một lời nguyền quái ác ăn sâu vào tủy: thể xác liên tục bị hoại tử, nhưng mỗi khi ngã xuống, thời gian lập tức quay ngược lại, kéo hắn sống dậy để bắt đầu một vòng lặp mới.",
+            "Trôi dạt về khu ổ chuột ven kinh đô lộng lẫy, hắn sống lay lắt như một bóng ma.",
+            "Giữa lúc tuyệt vọng sắp nuốt chửng khát vọng sống, Eosphoros – vị Dũng giả rực rỡ nhất của Thần điện, biểu tượng của ánh sáng và công lý – đã chìa tay cứu vớt hắn.",
+            "Bằng nước thánh thanh khiết, Eosphoros xoa dịu vết thương của lời nguyền, trao cho hắn thanh kiếm ngắn.",
         };
+
+        private static readonly string[] Campaign =
+        {
+            "Trên chặng đường thảo phạt quân đoàn quỷ dữ, Eosphoros luôn tiên phong làm tấm khiên vững chãi càn quét các Chỉ huy quỷ dữ. Cơ thể Eosphoros chằng chịt vết thương chiến trận, khiến nhịp độ chiến đấu đôi lúc chững lại.",
+            "Thế nhưng, Eosphoros không hề hay biết rằng kẻ đồng hành ốm yếu bên cạnh đang dùng chính cái chết làm vũ khí tối thượng.",
+        };
+
+        private static readonly string[] Rivalry =
+        {
+            "Qua hàng trăm lần bị quái vật xé xác, vòng lặp thời gian tua ngược liên tục, mang theo toàn bộ ký ức và kinh nghiệm vào kiếp sống mới.",
+            "Hắn giải mã được mọi quỹ đạo đòn đánh, thấu thị điểm mù và tung ra những nhát kiếm hoàn mỹ tuyệt đối. Kẻ ăn mày tàn tật ngày nào bộc phát kỹ năng thực chiến áp đảo, làm lu mờ cả ánh hào quang của Thần điện.",
+            "Từng ánh mắt thán phục của hắn dành cho Eosphoros vô tình trở thành những mũi dao găm vào lòng tự tôn của người anh hùng.",
+            "Cảm giác bất lực của một thiên tài khổ luyện cả đời nay lại bị một tên ăn trộm vượt mặt đã gieo mầm đố kỵ ăn mòn tâm trí vị thánh sống.",
+        };
+
+        private static readonly string[] MalkorVictory =
+        {
+            "Trận huyết chiến tại vương tọa Quỷ vương khép lại trong sự ngỡ ngàng tột độ: Eosphoros kiệt sức quỳ một chân trên đất, còn Kẻ lang thang tiến lên, dùng kiếm kỹ tích lũy qua vô số kiếp luân hồi để tự tay kết liễu Quỷ vương.",
+        };
+
+        private static readonly string[] Betrayal =
+        {
+            "Ngày khải hoàn, kinh đô rợp cờ hoa tung hô Eosphoros. Anh ta hiên ngang nhận lấy vương miện, tượng đài và sự tôn sùng mù quáng của muôn dân.",
+            "Nhưng đằng sau lớp vỏ bọc hoàn mỹ ấy là một linh hồn đã thối rữa vì nỗi sợ bị hạ bệ.",
+            "Khuất bóng mặt trời, Eosphoros lừa người đồng đội xuống tầng hầm ẩm mốc sâu bên dưới thánh điện để diệt khẩu nhằm chôn vùi sự thật vĩnh viễn.",
+        };
+
+        private static readonly string[] EndingA =
+        {
+            "Kẻ lang thang buông kiếm, quỳ xuống với hy vọng thức tỉnh lương tri của vị ân nhân năm xưa. Đáp lại chỉ là nhát kiếm xuyên tim lạnh lùng của Eosphoros.",
+            "Lời nguyền thời gian tan biến, Kẻ lang thang nhắm mắt xuôi tay trong vũng máu tối tăm, biến mất không một dòng lịch sử.",
+            "Còn Eosphoros bước lên bậc thang đầy nắng, vĩnh viễn mỉm cười đón nhận sự tôn thờ của thế gian bằng một lời nói dối hòa bình hoàn hảo.",
+        };
+
+        private static readonly string[] EndingB =
+        {
+            "Kẻ lang thang vung kiếm tử chiến sinh tử dưới hầm sâu. Tiếng reo hò xưng tụng vị thánh sống trên mặt đất hòa lẫn với tiếng kim loại va chạm chát chúa trong bóng tối.",
+            "Sau trận huyết chiến nghẹt thở, Kẻ lang thang hạ sát Eosphoros. Thế gian mãi mãi coi hắn là tên phản đồ đê tiện giết hại đấng cứu thế. Nhưng hắn không màng thanh minh.",
+            "Tra gươm vào vỏ, hắn bỏ lại xác ân nhân trong bóng tối, rũ bỏ mọi vinh quang để bước vào kiếp sống ẩn cư, lặng lẽ đếm từng ngày chờ căn bệnh hoại tử tước đi sinh mạng tàn tạ của mình.",
+        };
+
+        private static readonly string[] EndingBMonologue =
+        {
+            "Lịch sử được viết bởi những kẻ chiến thắng, nhưng sự thật thì ngủ vùi trong bóng tối. Ta đã giết ân nhân của mình. Thế gian sẽ nguyền rủa ta như một kẻ phản đồ đê tiện nhất.",
+            "Nhưng ít nhất... ngọn lửa của một lời nói dối đã tắt. Vòng lặp vĩnh viễn đóng lại. Giờ đây, chỉ còn ta và cơn đau này... đếm ngược đến hơi thở cuối cùng.",
+        };
+
+        public static IReadOnlyList<(string Title, string Content)> GetThreeActsLore() =>
+            new (string, string)[]
+            {
+                ("Hồi I: Thảm họa Oakhaven & Lời nguyền Khởi sinh", string.Join(" ", Oakhaven)),
+                ("Hồi II: Chặng đường Thảo phạt & Mầm mống Đố kỵ",
+                    string.Join(" ", Campaign) + " " + string.Join(" ", Rivalry) + " " + string.Join(" ", MalkorVictory)),
+                ("Hồi III: Khúc khải hoàn đẫm máu & Bi kịch dưới Mật thất",
+                    string.Join(" ", Betrayal) + " Kết thúc A: " + string.Join(" ", EndingA)
+                    + " Kết thúc B: " + string.Join(" ", EndingB))
+            };
+
+        private static DialogueGraph NarratedIntro(string prefix, IReadOnlyList<string> pages, string nextId)
+        {
+            var graph = new DialogueGraph(prefix + "_1");
+            AddPages(graph, prefix, Narrator, pages, nextId);
+            return graph;
+        }
+
+        private static void AddPages(DialogueGraph graph, string prefix, string speaker,
+            IReadOnlyList<string> pages, string nextId = null, StageResult ending = StageResult.None)
+        {
+            for (int i = 0; i < pages.Count; i++)
+            {
+                bool isLast = i == pages.Count - 1;
+                var node = new DialogueNode($"{prefix}_{i + 1}", speaker, pages[i],
+                    isLast ? nextId : $"{prefix}_{i + 2}");
+                if (isLast) node.Ending = ending;
+                graph.Add(node);
+            }
+        }
 
         public static DialogueGraph GetIntro(string stageId)
         {
             switch (stageId)
             {
                 case "stage-1":
-                    return new DialogueGraph("s1_1")
+                    return NarratedIntro("s1_story", Oakhaven, "s1_1")
                         .Add(new DialogueNode("s1_1", UnitCatalog.EosphorosId,
                             "Hãy đứng lên. Thế gian này không ruồng bỏ ngươi chừng nào ngọn lửa trong mắt ngươi còn cháy. Cầm lấy thanh kiếm này. Không phải chỉ những kẻ được thần linh lựa chọn, mới xứng đáng được mang danh anh hùng!", "s1_2"))
                         .Add(new DialogueNode("s1_2", UnitCatalog.WandererId,
@@ -34,14 +113,14 @@ namespace BTH.Content.Dialogues
                             "Kẻ mang dấu ấn hoại tử! Đại rìu của ta sẽ bổ nứt từng ô đá dưới chân ngươi!"));
 
                 case "stage-2":
-                    return new DialogueGraph("s2_1")
+                    return NarratedIntro("s2_story", Campaign, "s2_1")
                         .Add(new DialogueNode("s2_1", UnitCatalog.PlagueWitchId,
                             "Khí độc trong Rừng Bệnh Dịch này được chưng cất từ những kẻ đã bị Dũng Giả bỏ rơi...", "s2_2"))
                         .Add(new DialogueNode("s2_2", UnitCatalog.WandererId,
                             "Ta phải di chuyển trên các phiến đá khô, né bàn tay xác sống Grave Hands và dùng Necrotic Burst phản ngược bão độc!"));
 
                 case "stage-3":
-                    return new DialogueGraph("s3_1")
+                    return NarratedIntro("s3_story", Rivalry, "s3_1")
                         .Add(new DialogueNode("s3_1", UnitCatalog.AbyssKnightId,
                             "Khiên Mắt Quỷ phản chấn mọi đòn trực diện. Ngươi không thể vượt qua Cổng Thành Vực Sâu này!", "s3_2"))
                         .Add(new DialogueNode("s3_2", UnitCatalog.WandererId,
@@ -56,11 +135,13 @@ namespace BTH.Content.Dialogues
 
                 case "stage-5":
                     // Nguyên văn đoạn thoại cao trào dưới Mật thất Thánh điện (GDD §4.4)
-                    return new DialogueGraph("s5_1")
+                    return NarratedIntro("s5_story", Betrayal, "s5_1")
                         .Add(new DialogueNode("s5_1", UnitCatalog.WandererId,
                             "Tại sao lại là nơi này, Eosphoros? Bên trên mặt đất kia... dân chúng đang tung hô tên ngài.", "s5_2"))
                         .Add(new DialogueNode("s5_2", UnitCatalog.FallenEosphorosId,
-                            "Chính vì họ đang tung hô ta! Thế gian này chỉ cần một vị thần hoàn mỹ, một đấng cứu thế không tì vết. Nhưng ngươi... một tên ăn mày mang lời nguyền dơ bẩn, ngươi lại dám chiến đấu hoàn mỹ hơn cả ta!", "s5_3"))
+                            "Chính vì họ đang tung hô ta! Thế gian này chỉ cần một vị thần hoàn mỹ, một đấng cứu thế không tì vết. Nhưng ngươi... một tên ăn mày mang lời nguyền dơ bẩn, ngươi lại dám chiến đấu hoàn mỹ hơn cả ta!", "s5_2b"))
+                        .Add(new DialogueNode("s5_2b", UnitCatalog.FallenEosphorosId,
+                            "Nhát kiếm của ngươi làm ô uế ánh hào quang của ta! Ngươi nghĩ ta sẽ để sự thật đó bước ra ánh sáng sao?", "s5_3"))
                         .Add(new DialogueNode("s5_3", UnitCatalog.WandererId,
                             "Ta chưa từng muốn vinh quang của ngài. Ta chỉ muốn sống…", "s5_4"))
                         .Add(new DialogueNode("s5_4", UnitCatalog.FallenEosphorosId,
@@ -73,29 +154,26 @@ namespace BTH.Content.Dialogues
 
         public static DialogueGraph GetOutro(string stageId)
         {
+            if (stageId == "stage-4")
+            {
+                var graph = new DialogueGraph("s4_story_end_1");
+                AddPages(graph, "s4_story_end", Narrator, MalkorVictory);
+                return graph;
+            }
+
             if (stageId == "stage-5")
             {
                 var choiceNode = new DialogueNode("s5_end_1", UnitCatalog.FallenEosphorosId,
                     "Thanh Thánh Kiếm đã nứt vỡ... Giữa hầm sâu không một ai chứng kiến, ngươi sẽ chọn con đường nào, Kẻ Lang Thang?");
-                choiceNode.AddChoice("Kết thúc A — 'Lời nói dối vĩnh hằng' (Buông gươm chấp nhận tan biến)", "ending_a");
-                choiceNode.AddChoice("Kết thúc B — 'Tội đồ ẩn cư' (Vung kiếm quyết chiến chấm dứt vòng lặp)", "ending_b");
+                choiceNode.AddChoice("Kết thúc A — Lời nói dối vĩnh hằng (Buông gươm)", "ending_a_1");
+                choiceNode.AddChoice("Kết thúc B — Tội đồ ẩn cư (Vung kiếm quyết chiến)", "ending_b_1");
 
-                var nodeA = new DialogueNode("ending_a", UnitCatalog.WandererId,
-                    "Ta buông kiếm quỳ xuống với hy vọng thức tỉnh lương tri của ân nhân năm xưa... Lời nguyền thời gian tan biến, còn Eosphoros bước lên bậc thang đầy nắng, đón nhận sự tôn thờ của thế gian bằng một lời nói dối hòa bình hoàn hảo.")
-                {
-                    Ending = StageResult.EndingA
-                };
-
-                var nodeB = new DialogueNode("ending_b", UnitCatalog.WandererId,
-                    "Lịch sử được viết bởi những kẻ chiến thắng, nhưng sự thật thì ngủ vùi trong bóng tối. Ta đã giết ân nhân của mình... Nhưng ít nhất, ngọn lửa của một lời nói dối đã tắt. Vòng lặp vĩnh viễn đóng lại.")
-                {
-                    Ending = StageResult.EndingB
-                };
-
-                return new DialogueGraph("s5_end_1")
-                    .Add(choiceNode)
-                    .Add(nodeA)
-                    .Add(nodeB);
+                var graph = new DialogueGraph(choiceNode.Id).Add(choiceNode);
+                AddPages(graph, "ending_a", Narrator, EndingA, ending: StageResult.EndingA);
+                AddPages(graph, "ending_b", Narrator, EndingB, "ending_b_monologue_1");
+                AddPages(graph, "ending_b_monologue", UnitCatalog.WandererId, EndingBMonologue,
+                    ending: StageResult.EndingB);
+                return graph;
             }
 
             return new DialogueGraph("outro_1")
