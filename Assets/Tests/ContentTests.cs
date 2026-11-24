@@ -99,13 +99,20 @@ namespace BTH.Core.Tests
             var runnerA = new DialogueRunner(graph, knowledge);
             runnerA.Start();
             runnerA.Choose(0);
-            runnerA.Advance();
+            string endingA = ReadStoryToEnd(graph, runnerA);
+            StringAssert.Contains("nhát kiếm xuyên tim lạnh lùng của Eosphoros", endingA);
+            StringAssert.Contains("Lời nguyền thời gian tan biến", endingA);
+            StringAssert.Contains("lời nói dối hòa bình hoàn hảo.", endingA);
             Assert.AreEqual(StageResult.EndingA, runnerA.Ending);
 
             var runnerB = new DialogueRunner(graph, knowledge);
             runnerB.Start();
             runnerB.Choose(1);
-            runnerB.Advance();
+            string endingB = ReadStoryToEnd(graph, runnerB);
+            StringAssert.Contains("Lịch sử được viết bởi những kẻ chiến thắng, nhưng sự thật thì ngủ vùi trong bóng tối. "
+                + "Ta đã giết ân nhân của mình. Thế gian sẽ nguyền rủa ta như một kẻ phản đồ đê tiện nhất. "
+                + "Nhưng ít nhất... ngọn lửa của một lời nói dối đã tắt. Vòng lặp vĩnh viễn đóng lại. "
+                + "Giờ đây, chỉ còn ta và cơn đau này... đếm ngược đến hơi thở cuối cùng.", endingB);
             Assert.AreEqual(StageResult.EndingB, runnerB.Ending);
         }
 
@@ -338,6 +345,41 @@ namespace BTH.Core.Tests
             }
         }
 
+        [TestCase("stage-1", false, "hơn 5.000", "nước thánh", "mới xứng đáng được mang danh anh hùng")]
+        [TestCase("stage-2", false, "chằng chịt vết thương", "dùng chính cái chết làm vũ khí tối thượng", "Grave Hands")]
+        [TestCase("stage-3", false, "ký ức và kinh nghiệm", "gieo mầm đố kỵ", "Khiên Mắt Quỷ")]
+        [TestCase("stage-4", true, "Eosphoros kiệt sức", "Kẻ lang thang tiến lên", "tự tay kết liễu Quỷ vương")]
+        [TestCase("stage-5", false, "kinh đô rợp cờ hoa tung hô Eosphoros", "lừa người đồng đội", "Nhát kiếm của ngươi")]
+        public void HlinhStory_BeatsAppearInTheStageDialogueInOrder(
+            string stageId, bool outro, string first, string second, string third)
+        {
+            var graph = outro ? DialogueCatalog.GetOutro(stageId) : DialogueCatalog.GetIntro(stageId);
+            var runner = new DialogueRunner(graph);
+            runner.Start();
+
+            string text = ReadStoryToEnd(graph, runner);
+            int firstAt = text.IndexOf(first, System.StringComparison.OrdinalIgnoreCase);
+            int secondAt = text.IndexOf(second, System.StringComparison.Ordinal);
+            int thirdAt = text.IndexOf(third, System.StringComparison.Ordinal);
+            Assert.GreaterOrEqual(firstAt, 0, $"Thiếu mốc: {first}");
+            Assert.Greater(secondAt, firstAt, $"Sai thứ tự hoặc thiếu mốc: {second}");
+            Assert.Greater(thirdAt, secondAt, $"Sai thứ tự hoặc thiếu mốc: {third}");
+        }
+
+        private static string ReadStoryToEnd(DialogueGraph graph, DialogueRunner runner)
+        {
+            var pages = new List<string>();
+            while (!runner.IsFinished && pages.Count < graph.Nodes.Count)
+            {
+                Assert.AreEqual(StageResult.None, runner.Ending, "Ending chỉ hiện sau trang cuối.");
+                pages.Add(runner.Current.Text);
+                runner.Advance();
+            }
+
+            Assert.IsTrue(runner.IsFinished, "Thoại phải kết thúc, không được lặp vô hạn.");
+            return string.Join(" ", pages);
+        }
+
         [Test]
         public void AllArtAndAudioAssets_PhysicallyExistInUnityProject()
         {
@@ -348,6 +390,23 @@ namespace BTH.Core.Tests
             }
             Assert.IsNotNull(dir, "Không tìm thấy thư mục gốc chứa Assets/");
             string resRoot = Path.Combine(dir, "Assets", "Resources");
+            string audioRoot = Path.Combine(resRoot, "Audio");
+
+            foreach (string id in DuelCatalog.All().Select(duel => duel.MusicId).Append("forest_theme").Distinct())
+            {
+                Assert.IsTrue(File.Exists(Path.Combine(audioRoot, "BGM", id + ".ogg")), $"Thiếu file BGM: {id}");
+            }
+
+            string[] requiredSfx = {
+                "attack1", "attack2", "attack3", "boss_attack", "boss_roar", "player_death",
+                "transform_dark", "transform_light", "ui_confirm", "ui_select", "player_hurt",
+                "enemy_hurt", "enemy_death", "checkpoint", "dash"
+            };
+            foreach (string id in requiredSfx)
+            {
+                string path = Path.Combine(audioRoot, "SFX", id);
+                Assert.IsTrue(File.Exists(path + ".ogg") || File.Exists(path + ".wav"), $"Thiếu file SFX: {id}");
+            }
 
             foreach (var sheet in ArtAssetCatalog.GetSpritesheetSpecs())
             {

@@ -54,7 +54,7 @@ namespace BTH.Game
         private readonly Dictionary<UnitId, UnitSpriteAnimator> _unitAnimators = new Dictionary<UnitId, UnitSpriteAnimator>();
         private readonly List<IDisposable> _eventSubs = new List<IDisposable>();
 
-        private AudioSource _bgmSource;
+        private HlinhBgmPlayer _bgm;
         private AudioSource _sfxSource;
 
         private string _currentStageId = "stage-1";
@@ -110,7 +110,7 @@ namespace BTH.Game
         private void ApplyAudioOptions()
         {
             Time.timeScale = Mathf.Clamp(_options.AnimationSpeed, 0.5f, 2.5f);
-            if (_bgmSource != null) _bgmSource.volume = _options.MasterVolume * _options.BgmVolume;
+            _bgm?.SetVolume(_options.MasterVolume * _options.BgmVolume);
             if (_sfxSource != null) _sfxSource.volume = _options.MasterVolume * _options.SfxVolume;
         }
 
@@ -126,9 +126,7 @@ namespace BTH.Game
             _mainCam.orthographic = true;
             _mainCam.backgroundColor = new Color(0.05f, 0.06f, 0.09f, 1f);
 
-            _bgmSource = gameObject.AddComponent<AudioSource>();
-            _bgmSource.loop = true;
-            _bgmSource.volume = 0.35f;
+            _bgm = new HlinhBgmPlayer(gameObject);
 
             _sfxSource = gameObject.AddComponent<AudioSource>();
             _sfxSource.loop = false;
@@ -137,12 +135,8 @@ namespace BTH.Game
 
         private void PlayBgm(string clipName)
         {
-            var clip = Resources.Load<AudioClip>("Audio/BGM/" + clipName);
-            if (clip != null && _bgmSource.clip != clip)
-            {
-                _bgmSource.clip = clip;
-                _bgmSource.Play();
-            }
+            float pitch = clipName == AudioCatalog.StoryTheme ? 1f : AudioCatalog.DuelPitch;
+            _bgm.Play(clipName, pitch);
         }
 
         private void PlaySfx(string clipName)
@@ -181,7 +175,7 @@ namespace BTH.Game
                 _dialogueRunner = null;
             }
 
-            PlayBgm("forest_theme");
+            PlayBgm(AudioCatalog.StoryTheme);
             _combatBannerText = "Bắt đầu " + _session.State.Stage.DisplayName + " — Quan sát ô đỏ Telegraph của Boss!";
         }
 
@@ -281,6 +275,10 @@ namespace BTH.Game
                     : new Color(1f, 0.86f, 0.25f);
                 _vfxManager.SpawnPopup(pos, $"-{e.Amount} HP{tag}", col);
                 TriggerCameraShake(0.14f, 0.18f);
+                if (e.Amount > 0 && !e.Killed)
+                {
+                    PlaySfx(e.Target == _session.State.Units.Player?.Id ? "player_hurt" : "enemy_hurt");
+                }
             }));
 
             _eventSubs.Add(ev.Subscribe<StatusAppliedEvent>((in StatusAppliedEvent e) =>
@@ -329,7 +327,8 @@ namespace BTH.Game
                     _transitionTimer = 1.25f;
                     TriggerCameraShake(0.35f, 0.6f);
                     PlaySfx("boss_roar");
-                    PlayBgm("boss_theme");
+                    PlaySfx("transform_dark");
+                    PlayBgm(_session.State.Stage.Duel?.MusicId ?? AudioCatalog.DuelTheme);
                     _combatBannerText = "BOSS DƯỚI 70% HP — CHUYỂN CẢNH PHASE 2: DUEL MODE!";
                 }
             }));
@@ -384,6 +383,7 @@ namespace BTH.Game
                     {
                         _dialogueRunner = new DialogueRunner(outro, _session.Knowledge);
                         _dialogueRunner.Start();
+                        PlayBgm(AudioCatalog.StoryTheme);
                     }
                 }
             }));
@@ -533,6 +533,7 @@ namespace BTH.Game
 
         private void Update()
         {
+            _bgm?.Tick(Time.unscaledDeltaTime);
             if (_session?.State == null) return;
 
             if (_shakeTimer > 0f)
@@ -748,6 +749,10 @@ namespace BTH.Game
             if (_session.State.Snapshots.CanRewind)
             {
                 _session.State.Snapshots.Rewind();
+                var state = _session.State;
+                PlayBgm(state.Turn.Phase == TurnPhase.Duel
+                    ? (state.Stage.Duel?.MusicId ?? AudioCatalog.DuelTheme)
+                    : AudioCatalog.StoryTheme);
             }
             else
             {
@@ -1345,16 +1350,23 @@ namespace BTH.Game
             Rect box = new Rect(295, UiH - 220, boxW, 204);
             GUI.Box(box, GUIContent.none, _panelStyle);
 
-            Rect port = new Rect(box.x + 14, box.y + 14, 136, 136);
-            DrawRect(port, new Color(0.90f, 0.76f, 0.35f, 1f));
-            GUI.DrawTexture(new Rect(port.x + 3, port.y + 3, port.width - 6, port.height - 6),
-                ArtCatalog.GetPortrait(node.Speaker), ScaleMode.ScaleToFit);
+            bool isNarration = node.Speaker == DialogueCatalog.Narrator;
+            if (!isNarration)
+            {
+                Rect port = new Rect(box.x + 14, box.y + 14, 136, 136);
+                DrawRect(port, new Color(0.90f, 0.76f, 0.35f, 1f));
+                GUI.DrawTexture(new Rect(port.x + 3, port.y + 3, port.width - 6, port.height - 6),
+                    ArtCatalog.GetPortrait(node.Speaker), ScaleMode.ScaleToFit);
+            }
 
-            GUI.Label(new Rect(box.x + 165, box.y + 14, box.width - 180, 26),
-                $"ĐỐI THOẠI — {node.Speaker.ToUpperInvariant()}", _headerStyle);
+            float textX = box.x + (isNarration ? 18 : 165);
+            float textW = box.xMax - textX - 16;
+            string title = isNarration ? "DẪN TRUYỆN" : $"ĐỐI THOẠI — {node.Speaker.ToUpperInvariant()}";
+            GUI.Label(new Rect(textX, box.y + 14, textW, 26), title, _headerStyle);
 
             var dlgTextStyle = new GUIStyle(_labelStyle) { fontSize = 14 };
-            GUI.Label(new Rect(box.x + 165, box.y + 44, box.width - 180, 74), node.Text, dlgTextStyle);
+            float textHeight = node.Choices.Count == 0 ? 104 : 74;
+            GUI.Label(new Rect(textX, box.y + 44, textW, textHeight), node.Text, dlgTextStyle);
 
             if (node.Choices.Count > 0)
             {
@@ -1397,7 +1409,9 @@ namespace BTH.Game
                     : (res == StageResult.EndingB
                         ? "★ KẾT CỤC B: TỘI ĐỒ ẨN CƯ ★"
                         : "★ CHIẾN THẮNG MÀN CHƠI (VICTORY) ★");
-                desc = "Bạn đã vượt qua thử thách giải đố bàn cờ và hạ gục Boss trong màn Duel Phase 2!";
+                desc = res == StageResult.EndingA
+                    ? "Kẻ Lang Thang buông gươm và chết dưới nhát kiếm của Eosphoros. Lời nguyền thời gian tan biến."
+                    : "Bạn đã vượt qua thử thách giải đố bàn cờ và hạ gục Boss trong màn Duel Phase 2!";
             }
             else
             {
