@@ -28,6 +28,7 @@ namespace BTH.Core.Run
         private readonly IInitiativePolicy _initiative;
         private readonly int _snapshotCapacity;
         private readonly int _seed;
+        private readonly Action<UnitState, GridCoord, GameState> _onUnitEnteredCell;
         private IRandomSource _random;
         private GameActionExecutor _executor;
 
@@ -35,7 +36,8 @@ namespace BTH.Core.Run
             IEnemyBrainLibrary brains = null, IClashResolver clash = null,
             IRandomSource random = null, ElementMatrix elements = null,
             IObjectiveEvaluator objective = null, IInitiativePolicy initiative = null,
-            int snapshotCapacity = 8, int seed = 20260101)
+            int snapshotCapacity = 8, int seed = 20260101,
+            Action<UnitState, GridCoord, GameState> onUnitEnteredCell = null)
         {
             _rules = rules ?? new GameRules();
             _skills = skills ?? new SkillLibrary();
@@ -46,6 +48,7 @@ namespace BTH.Core.Run
             _initiative = initiative;
             _snapshotCapacity = snapshotCapacity;
             _seed = seed;
+            _onUnitEnteredCell = onUnitEnteredCell;
             _random = random;
         }
 
@@ -207,6 +210,19 @@ namespace BTH.Core.Run
             state.Knowledge = new RunKnowledge(events);
             state.Turn = new TurnManager(state, _initiative, _objective);
             state.Snapshots = new SnapshotService(state, new SnapshotStore(_snapshotCapacity));
+
+            if (_onUnitEnteredCell != null)
+            {
+                units.OnUnitEnteredCell = (unit, cell) => _onUnitEnteredCell(unit, cell, state);
+            }
+
+            events.Subscribe<UnitDiedEvent>((in UnitDiedEvent e) =>
+            {
+                if (units.TryGet(e.Unit, out var unit) && unit.Faction == UnitFaction.Player)
+                {
+                    state.Knowledge.RegisterDeath();
+                }
+            });
 
             ApplyTerrains(stage, grid);
             SpawnUnits(stage, units);

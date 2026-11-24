@@ -51,9 +51,11 @@ namespace BTH.Core.Tests
         }
 
         [Test]
-        public void ClashWin_AppliesEffect_AndAutoFinisherDealsDoubleDamage()
+        public void ClashWin_DoublesFinisherDamageAndClearsStaggerBeforeNextRound()
         {
-            var session = CreateDuelSession(Duel());
+            var duel = Duel();
+            duel.BossPower = 15;
+            var session = CreateDuelSession(duel);
             EnterDuel(session);
             var hero = session.State.Units.Player;
             var boss = session.State.Units.Boss;
@@ -61,10 +63,14 @@ namespace BTH.Core.Tests
             ActionResult result = session.TryExecute(ActionRequest.ClashSkill(hero.Id, "sword"));
 
             Assert.That(result.Success, Is.True, result.Message);
-            Assert.That(boss.IsStaggered, Is.True, "Thắng Clash phải gắn Stagger cho boss.");
+            Assert.That(boss.IsStaggered, Is.False, "Stagger phải hết ngay sau đòn kết liễu.");
             Assert.That(session.State.Duel.State.LastResult, Is.EqualTo(ClashResult.Win));
             Assert.That(boss.Hp, Is.EqualTo(4), "4 ATK × 2 (Stagger) = 8, tự đánh ngay.");
             Assert.That(session.State.Duel.State.Round, Is.EqualTo(2), "Tự sang vòng sau.");
+
+            Assert.That(session.TryExecute(ActionRequest.ClashSkill(hero.Id, "burst")).Success, Is.True);
+            Assert.That(session.State.Duel.State.LastResult, Is.EqualTo(ClashResult.Draw));
+            Assert.That(boss.Hp, Is.EqualTo(2), "Hoà ở vòng kế chỉ gây 2 HP, không nhân Stagger.");
         }
 
         [Test]
@@ -118,6 +124,72 @@ namespace BTH.Core.Tests
         }
 
         [Test]
+        public void DuelDefeat_CanRetryFromRoundOneWhileKeepingDeathsAndKnowledge()
+        {
+            var duel = Duel();
+            duel.BossPower = 15;
+            var session = CreateDuelSession(duel);
+            var state = session.State;
+            SnapshotTrigger lastRewind = SnapshotTrigger.StageStart;
+            using var subscription = session.Events.Subscribe<RewindPerformedEvent>((in RewindPerformedEvent e) =>
+            {
+                lastRewind = e.Trigger;
+            });
+            EnterDuel(session);
+
+            Assert.That(session.TryExecute(ActionRequest.ClashSkill(state.Units.Player.Id, "burst")).Success, Is.True);
+            state.Snapshots.Rewind();
+            Assert.That(lastRewind, Is.EqualTo(SnapshotTrigger.ClashStart));
+            Assert.That(state.Duel.State.Round, Is.EqualTo(1));
+
+            for (int attempt = 1; attempt <= 2; attempt++)
+            {
+                var heroId = state.Units.Player.Id;
+                Assert.That(session.TryExecute(ActionRequest.ClashSkill(heroId, "burst")).Success, Is.True);
+                Assert.That(session.TryExecute(ActionRequest.ClashSkill(heroId, "heavy")).Success, Is.True);
+                Assert.That(state.Result, Is.EqualTo(StageResult.DefeatPlayerDead));
+                state.Units.Kill(heroId);
+                Assert.That(state.Knowledge.Deaths, Is.EqualTo(attempt));
+
+                state.Snapshots.Rewind();
+                Assert.That(lastRewind, Is.EqualTo(SnapshotTrigger.ClashStart));
+                Assert.That(state.Result, Is.EqualTo(StageResult.None));
+                Assert.That(state.Turn.Phase, Is.EqualTo(TurnPhase.Duel));
+                Assert.That(state.BossPhase.Phase, Is.EqualTo(2));
+                Assert.That(state.Duel.State.Round, Is.EqualTo(1));
+                Assert.That(state.Units.Player.Hp, Is.EqualTo(12));
+                Assert.That(state.Units.Boss.Hp, Is.EqualTo(12));
+                Assert.That(state.Knowledge.Deaths, Is.EqualTo(attempt));
+                Assert.That(state.Knowledge.HasSeen(RunKnowledge.BossSkillSeenPrefix + "boss-strike-2"), Is.True);
+            }
+        }
+
+        [Test]
+        public void RewindToBoard_RestoresBossPhaseAndNotifiesOnReentry()
+        {
+            var session = CreateDuelSession(Duel());
+            var state = session.State;
+            int transitions = 0;
+            using var subscription = session.Events.Subscribe<BossPhaseChangedEvent>((in BossPhaseChangedEvent e) =>
+            {
+                transitions++;
+            });
+            EnterDuel(session);
+            Assert.That(state.Snapshots.Capture().BossPhase, Is.EqualTo(2));
+
+            state.Snapshots.Rewind();
+            state.Snapshots.Rewind();
+
+            Assert.That(state.Turn.Phase, Is.EqualTo(TurnPhase.Player));
+            Assert.That(state.Duel.IsActive, Is.False);
+            Assert.That(state.BossPhase.Phase, Is.EqualTo(1));
+            Assert.That(transitions, Is.EqualTo(1));
+
+            EnterDuel(session);
+            Assert.That(transitions, Is.EqualTo(2));
+        }
+
+        [Test]
         public void DuelKill_EndsStageWithVictory()
         {
             var session = CreateDuelSession(Duel(), bossHp: 10);
@@ -130,6 +202,7 @@ namespace BTH.Core.Tests
 
             Assert.That(clash.Success, Is.True, clash.Message);
             Assert.That(boss.IsAlive, Is.False, "Finisher tự động phải giết boss.");
+            Assert.That(session.Knowledge.Deaths, Is.Zero);
             Assert.That(session.State.Duel.State.Winner, Is.EqualTo(hero.Id));
             Assert.That(session.State.Result, Is.EqualTo(StageResult.Victory));
             Assert.That(session.State.Turn.Phase, Is.EqualTo(TurnPhase.StageEnded));
@@ -166,8 +239,8 @@ namespace BTH.Core.Tests
             int capturedBossHp = boss.Hp;
             int capturedRound = session.State.Duel.State.Round;
 
-            ApplyDamage(session, boss.Id, 1); // Stagger ×2 → mất 2 HP, vẫn còn sống.
-            Assert.That(boss.Hp, Is.EqualTo(capturedBossHp - 2));
+            ApplyDamage(session, boss.Id, 1);
+            Assert.That(boss.Hp, Is.EqualTo(capturedBossHp - 1));
 
             session.State.Snapshots.Restore(snapshot);
 
@@ -247,6 +320,7 @@ namespace BTH.Core.Tests
             Assert.That(result.Success, Is.True, result.Message);
             Assert.That(session.State.Duel.State.IsOver, Is.True);
             Assert.That(session.State.Result, Is.EqualTo(StageResult.DefeatTurnLimit));
+            Assert.That(session.Knowledge.Deaths, Is.Zero);
             Assert.That(session.State.Turn.Phase, Is.EqualTo(TurnPhase.StageEnded),
                 "Không được kẹt IsOver mà stage chưa kết thúc.");
         }

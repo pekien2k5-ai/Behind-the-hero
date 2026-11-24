@@ -219,18 +219,16 @@ namespace BTH.Game
                 {
                     anim.MoveToWorld(CoordToWorldForUnit(u));
                     PlaySfx("dash");
-
-                    var beforeTerrain = _session.State.Grid.InBounds(e.To) ? _session.State.Grid.Get(e.To).Terrain : TerrainId.Floor;
-                    int hpBefore = u.Hp;
-                    TerrainCatalog.HandleUnitEnteredCell(u, e.To, _session.State);
-                    if (beforeTerrain == TerrainId.Chest && u.Hp >= hpBefore)
-                    {
-                        Vector3 w = CoordToWorld(e.To);
-                        _vfxManager.SpawnSkillVfx("divine-barrier", w, 1.4f);
-                        _vfxManager.SpawnPopup(w, $"RƯƠNG KHO BÁU: +{ChestTerrainBehaviour.HealAmount} HP!", new Color(0.35f, 1f, 0.55f), 1.5f);
-                        PlaySfx("checkpoint");
-                    }
                 }
+            }));
+
+            _eventSubs.Add(ev.Subscribe<ChestOpenedEvent>((in ChestOpenedEvent e) =>
+            {
+                Vector3 position = CoordToWorld(e.Coord);
+                _vfxManager.SpawnSkillVfx("divine-barrier", position, 1.4f);
+                string text = e.HpRestored > 0 ? $"RƯƠNG KHO BÁU: +{e.HpRestored} HP!" : "ĐÃ MỞ RƯƠNG KHO BÁU!";
+                _vfxManager.SpawnPopup(position, text, new Color(0.35f, 1f, 0.55f), 1.5f);
+                PlaySfx("checkpoint");
             }));
 
             _eventSubs.Add(ev.Subscribe<UnitActedEvent>((in UnitActedEvent e) =>
@@ -354,6 +352,9 @@ namespace BTH.Game
 
             _eventSubs.Add(ev.Subscribe<RewindPerformedEvent>((in RewindPerformedEvent e) =>
             {
+                _transitionTimer = 0f;
+                _duelVfxTimer = 0f;
+                _lastDuelRoundNotice = string.Empty;
                 RebuildBoardAndUnits();
                 RefreshValidTargets();
                 var player = _session.State.Units.Player;
@@ -361,8 +362,11 @@ namespace BTH.Game
                 {
                     _vfxManager.SpawnSkillVfx("rewind", CoordToWorldForUnit(player), 1.8f);
                 }
+                bool inDuel = _session.State.Turn.Phase == TurnPhase.Duel;
+                PlayBgm(inDuel ? "boss_theme" : "forest_theme");
                 PlaySfx("transform_dark");
-                _combatBannerText = $"ĐÃ TUA NGƯỢC THỜI GIAN (REWIND) VỀ LƯỢT {e.TurnIndex}! Ký ức chiêu Boss vẫn được giữ.";
+                string checkpoint = inDuel ? "ĐẦU DUEL" : $"LƯỢT {e.TurnIndex}";
+                _combatBannerText = $"ĐÃ TUA NGƯỢC THỜI GIAN VỀ {checkpoint}! Ký ức chiêu Boss vẫn được giữ.";
             }));
 
             _eventSubs.Add(ev.Subscribe<CameraShakeHintEvent>((in CameraShakeHintEvent e) =>
@@ -545,7 +549,7 @@ namespace BTH.Game
 
             if (_transitionTimer > 0f)
             {
-                _transitionTimer -= Time.deltaTime;
+                _transitionTimer -= Time.unscaledDeltaTime;
             }
 
             if (_duelVfxTimer > 0f)
@@ -553,9 +557,11 @@ namespace BTH.Game
                 _duelVfxTimer -= Time.deltaTime;
             }
 
-            bool inDuel = _session.State.Turn.Phase == TurnPhase.Duel;
+            bool inDuel = _session.State.Duel.IsActive;
             if (_boardRoot != null) _boardRoot.gameObject.SetActive(!inDuel);
             if (_unitRoot != null) _unitRoot.gameObject.SetActive(!inDuel);
+
+            if (_transitionTimer > 0f) return;
 
             HandleKeyboardShortcuts();
             if (!inDuel)
@@ -584,6 +590,12 @@ namespace BTH.Game
                         PlaySfx("ui_confirm");
                     }
                 }
+                return;
+            }
+
+            if (_session.State.Turn.Phase == TurnPhase.Duel)
+            {
+                if (kb.rKey.wasPressedThisFrame) ExecuteRewind();
                 return;
             }
 
@@ -906,25 +918,23 @@ namespace BTH.Game
             if (_session?.State == null) return;
 
             var prevMatrix = GUI.matrix;
+            bool wasEnabled = GUI.enabled;
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity,
                 new Vector3(Screen.width / UiW, Screen.height / UiH, 1f));
+            bool isTransitioning = _transitionTimer > 0f;
+            GUI.enabled = wasEnabled && !isTransitioning;
 
-            if (_session.State.Turn.Phase == TurnPhase.Duel)
+            if (_session.State.Duel.IsActive)
             {
                 DrawDuelScreen();
             }
             else
             {
                 DrawBoardWorldLabels();
+                DrawLeftHudPanel();
             }
 
             DrawTopBar();
-            DrawLeftHudPanel();
-
-            if (_transitionTimer > 0f)
-            {
-                DrawPhase2TransitionOverlay();
-            }
 
             if (_dialogueRunner != null && !_dialogueRunner.IsFinished)
             {
@@ -938,6 +948,12 @@ namespace BTH.Game
             if (_showSettingsModal)
             {
                 DrawSettingsModal();
+            }
+
+            GUI.enabled = wasEnabled;
+            if (isTransitioning)
+            {
+                DrawPhase2TransitionOverlay();
             }
 
             GUI.matrix = prevMatrix;
@@ -981,7 +997,7 @@ namespace BTH.Game
                 var bossPortrait = ArtCatalog.GetPortrait(boss.Definition.PortraitId);
                 GUI.DrawTexture(new Rect(292, 42, 42, 42), bossPortrait, ScaleMode.ScaleToFit);
 
-                string phaseTag = state.Turn.Phase == TurnPhase.Duel ? " [PHASE 2: DUEL MODE]" : " [PHASE 1: BÀN CỜ]";
+                string phaseTag = state.Duel.IsActive ? " [PHASE 2: DUEL MODE]" : " [PHASE 1: BÀN CỜ]";
                 GUI.Label(new Rect(342, 41, 350, 20), $"{boss.Definition.DisplayName}{phaseTag}", _headerStyle);
 
                 Rect barBg = new Rect(342, 63, 330, 18);
@@ -1205,7 +1221,7 @@ namespace BTH.Game
             var boss = state.Units.Boss;
             if (duel == null || player == null || boss == null) return;
 
-            Rect arena = new Rect(280, 96, UiW - 288, UiH - 104);
+            Rect arena = new Rect(8, 96, UiW - 16, UiH - 104);
             var bgTex = ArtCatalog.GetBackground(duel.Definition.BackgroundId);
             GUI.DrawTexture(arena, bgTex, ScaleMode.StretchToFill);
 
@@ -1236,6 +1252,10 @@ namespace BTH.Game
 
             DrawSpriteOnGui(pRect, pFrames[frameIdx % pFrames.Length], flipX: false);
             DrawSpriteOnGui(bRect, bFrames[frameIdx % bFrames.Length], flipX: true);
+            DrawDuelHealth(new Rect(pRect.x, pRect.yMax, pRect.width, 22), player);
+            DrawDuelHealth(new Rect(bRect.x, bRect.yMax, bRect.width, 22), boss);
+            GUI.Label(new Rect(pRect.x, pRect.yMax + 24, pRect.width, 22),
+                $"Vòng lặp: {state.Knowledge.Deaths}", _labelStyle);
 
             if (_duelVfxTimer > 0f)
             {
@@ -1281,6 +1301,14 @@ namespace BTH.Game
             }
         }
 
+        private void DrawDuelHealth(Rect rect, UnitState unit)
+        {
+            DrawRect(rect, new Color(0.18f, 0.08f, 0.08f, 1f));
+            DrawRect(new Rect(rect.x, rect.y, rect.width * Mathf.Clamp01(unit.HpRatio), rect.height),
+                new Color(0.75f, 0.16f, 0.18f, 1f));
+            GUI.Label(new Rect(rect.x + 8, rect.y, rect.width - 16, rect.height), $"HP {unit.Hp} / {unit.MaxHp}", _boldLabelStyle);
+        }
+
         private static void DrawSpriteOnGui(Rect dst, Sprite sp, bool flipX)
         {
             if (sp == null || sp.texture == null) return;
@@ -1304,7 +1332,7 @@ namespace BTH.Game
                 alignment = TextAnchor.MiddleCenter
             };
             st.normal.textColor = new Color(1f, 0.88f, 0.42f, 1f);
-            GUI.Label(new Rect(280, UiH * 0.4f, UiW - 280, 80),
+            GUI.Label(new Rect(0, UiH * 0.4f, UiW, 80),
                 "⚔ BOSS DƯỚI 70% HP — PHASE 2: DUEL MODE! ⚔", st);
         }
 

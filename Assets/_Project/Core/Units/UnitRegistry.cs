@@ -26,6 +26,8 @@ namespace BTH.Core.Units
 
         public IReadOnlyList<UnitState> All => _all;
 
+        internal Action<UnitState, GridCoord> OnUnitEnteredCell { get; set; }
+
         public UnitState Player => FirstByFaction(UnitFaction.Player);
 
         public UnitState Boss
@@ -134,11 +136,16 @@ namespace BTH.Core.Units
                 throw new InvalidOperationException("Không dời được " + id + " tới " + anchor);
             }
 
+            var oldPosition = unit.Position;
             var oldCells = new List<GridCoord>(unit.Footprint);
             ClearOccupancyCells(oldCells);
             unit.SetPosition(anchor);
             _occupancy.Move(id, oldCells, unit.Footprint);
             ApplyOccupancy(unit);
+            if (oldPosition != anchor)
+            {
+                OnUnitEnteredCell?.Invoke(unit, anchor);
+            }
         }
 
         public IReadOnlyList<UnitState> UnitsIn(IReadOnlyList<GridCoord> cells)

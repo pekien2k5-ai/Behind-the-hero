@@ -136,6 +136,7 @@ namespace BTH.Content.Brains
         private readonly ElementId _element;
         private readonly bool _useCrossOnEvenTurn;
         private readonly bool _useRowOnOddTurn;
+        private readonly bool _useRowOnEvenTurn;
         private readonly TerrainId _evenTerrain;
         private readonly TerrainFlags _evenFlags;
         private readonly int _evenHazard;
@@ -155,7 +156,8 @@ namespace BTH.Content.Brains
             TerrainFlags evenFlags = TerrainFlags.None,
             int evenHazard = 0,
             int evenCollapse = 0,
-            System.Func<IStatusEffect> hitStatus = null)
+            System.Func<IStatusEffect> hitStatus = null,
+            bool useRowOnEvenTurn = false)
         {
             Id = id;
             _primarySkillId = primarySkillId;
@@ -165,6 +167,7 @@ namespace BTH.Content.Brains
             _element = element;
             _useCrossOnEvenTurn = useCrossOnEvenTurn;
             _useRowOnOddTurn = useRowOnOddTurn;
+            _useRowOnEvenTurn = useRowOnEvenTurn;
             _evenTerrain = evenTerrain;
             _evenFlags = evenFlags;
             _evenHazard = evenHazard;
@@ -195,7 +198,7 @@ namespace BTH.Content.Brains
                     }
                 }
             }
-            else if (!evenTurn && _useRowOnOddTurn)
+            else if (evenTurn ? _useRowOnEvenTurn : _useRowOnOddTurn)
             {
                 int dx = targetCell.X - self.Center.X;
                 int dy = targetCell.Y - self.Center.Y;
@@ -205,15 +208,13 @@ namespace BTH.Content.Brains
                 var raw = GridShapes.Row(self.Center, dirX, dirY, 4);
                 for (int i = 0; i < raw.Count; i++)
                 {
-                    if (state.Grid.InBounds(raw[i]))
+                    var cell = raw[i];
+                    if (!state.Grid.TryGet(cell, out var tile) || tile.BlocksLineOfSight)
                     {
-                        danger.Add(raw[i]);
-                        if (state.Grid.Get(raw[i]).BlocksLineOfSight) break;
+                        break;
                     }
-                }
-                if (danger.Count == 0 && state.Grid.InBounds(targetCell))
-                {
-                    danger.Add(targetCell);
+
+                    danger.Add(cell);
                 }
             }
             else
@@ -315,7 +316,7 @@ namespace BTH.Content.Brains
             // Boss 3: Kỵ Sĩ Hư Không — Chẵn: Tia Thương Hư Không xuyên hàng 4 ô, Lẻ: Thương Đâm
             lib.Register(new TacticalBossBrain(
                 "brain-boss-abyss", "void-spear-beam", "spear-thrust", 5, 4, ElementId.Piercing,
-                useCrossOnEvenTurn: false, useRowOnOddTurn: true));
+                useCrossOnEvenTurn: false, useRowOnEvenTurn: true));
 
             // Boss 4: Quỷ Vương Malkor (2x2) — Chẵn: Brimstone Meteor (chữ thập + sập sàn 1 lượt), Lẻ: Cự Kiếm Hỏa Ngục (hàng lửa)
             lib.Register(new TacticalBossBrain(

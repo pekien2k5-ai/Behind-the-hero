@@ -25,6 +25,11 @@ namespace BTH.Core.Ai
 
         public int Phase { get; private set; }
 
+        internal void RestorePhase(int phase)
+        {
+            Phase = phase;
+        }
+
         public bool ShouldEnterPhase2(int hp, int maxHp)
         {
             if (maxHp <= 0 || hp <= 0)
