@@ -1,53 +1,74 @@
 # Behind the Hero
 
-Game chiến thuật theo lượt (turn-based tactics) 1v1, làm bằng Unity 2D — đồ án Nhóm 10, lớp 65CNTT.
+Game chiến thuật theo lượt (turn-based tactics) 1v1 kết hợp giải đố không gian (spatial grid puzzle), làm bằng Unity 2D — đồ án Nhóm 10, lớp 65CNTT.
 
-Người chơi điều khiển **Wanderer** qua 5 ải, mỗi ải đối đầu một boss với bộ chiêu riêng. Combat dùng lưới ô vuông, 2 AP mỗi lượt (1 di chuyển + 1 hành động), hệ thống **Clash** (chọn chiêu để đấu với chiêu boss) và cơ chế **rewind** khi thua.
+Người chơi điều khiển **Wanderer (Kẻ Lang Thang)** qua 5 ải, mỗi ải đối đầu một Boss với cơ chế giải đố địa hình riêng ở **Phase 1 (Bàn cờ)** và bước vào màn đấu chiêu trực diện **Phase 2 (Duel Mode)** khi máu Boss xuống dưới 70%, kết hợp cơ chế **Tua ngược thời gian (Rewind)** khi gục ngã và **2 nhánh kết thúc (Ending A / Ending B)** ở cuối Ải 5.
 
 ## Trạng thái
 
 | Phần | Trạng thái |
 |---|---|
-| **Core** — luật chơi (C# thuần, không dùng UnityEngine) | ✅ 163 file, **75 unit test xanh** (gồm auto finisher Duel) |
-| **Content** — chiêu, quái, màn chơi, Duel, thoại | ✅ 29 chiêu, 9 unit, 8 brain, 5 màn, 5 Duel, 11 đoạn thoại |
-| Unity — hiển thị, input, animation, âm thanh | ⏳ chưa làm |
-| UI — HUD, menu, Clash/Duel UI | ⏳ chưa làm |
+| **Core (`BTH.Core`)** — luật chơi (C# thuần, không dùng `UnityEngine`) | ✅ 163 file, **81/81 unit test xanh** (`dotnet test` & Unity EditMode) |
+| **Content (`BTH.Content`)** — đơn vị, chiêu, AI, 8 địa hình, 5 màn, 5 Duel, thoại 3 hồi | ✅ 9 unit, 26 chiêu + behaviour, 8 brain, 8 địa hình tương tác, 5 màn, 5 Duel, 10 đồ thị thoại |
+| **Unity (`BTH.Game` & `BTH.Editor`)** — bàn cờ Tileset, Spritesheet 4 trạng thái, VFX, Input, Audio | ✅ Đã hoàn thành (`GameBootstrap`, `ArtCatalog`, `UnitSpriteAnimator`, `VfxPopupManager`, `AudioCatalog`) |
+| **UI (`BTH.UI`)** — HUD chiến thuật, khung chân dung đối thoại, màn hình Phase 2 Duel, Cài đặt | ✅ Đã hoàn thành (tự động khởi chạy ngay khi bấm **Play ▶** trong Unity Editor) |
+| **Art & Audio (`Assets/_Project/Art` & `Assets/Resources`)** — Spritesheets, Tileset, VFX, Portraits, BGM/SFX | ✅ 9 Spritesheets (`Idle/Walk/Attack/Death`), 25 Tiles + Atlas, 12 VFX strips, 7 Portraits, 5 Duel Backgrounds, 2 BGM + 14 SFX |
 
 ## Cấu trúc
 
 ```
 Assets/
+  Resources/
+    Art/           # Bộ ảnh PNG đã tách nền nạp tự động ở runtime (Spritesheets, Tilesets, VFX, Portraits, Backgrounds)
+    Audio/         # Nhạc nền BGM (forest_theme, boss_theme) và 14 hiệu ứng âm thanh SFX
   _Project/
     Core/          # BTH.Core — luật chơi, C# thuần, không tham chiếu UnityEngine
       Grid/        #   bàn cờ, địa hình, tầm nhìn, hình dạng vùng
       Units/       #   quân, faction, footprint, registry, A*
       Turn/        #   pha lượt, AP, thứ tự hành động
       Actions/     #   request, validator, executor
-      Combat/      #   damage, effect, status, element, skill, clash
+      Combat/      #   damage, effect, status, element, skill, clash, duel
       Ai/          #   enemy intent, telegraph, boss phase
       Run/         #   rules, stage, snapshot, event bus, session, dialogue
-    Content/       # BTH.Content — dữ liệu game + hành vi chiêu/AI, không tham chiếu UnityEngine
-      Units/       #   9 unit definition (Wanderer, Eosphoros, quái, 5 boss)
-      Skills/      #   29 chiêu + behaviour (nón, hàng, chữ thập, vuông, xuyên giáp)
-      Brains/      #   8 bộ não: melee, ranged, ally, 5 boss
-      Stages/      #   5 màn 8×8 → 10×10, terrain override
-      Duels/       #   5 DuelDefinition cho Phase 2
-      Dialogues/   #   thoại trước/sau ải + 2 ending
-      Terrain/     #   floor, wall, pit, cracked, poison, lava
-  Tests/           # BTH.Core.Tests — 75 test NUnit cho Core + Content + Duel
+    Content/       # BTH.Content — dữ liệu game + hành vi chiêu/AI/địa hình, không tham chiếu UnityEngine
+      Units/       #   9 unit definition (Wanderer, Eosphoros, Imp, Gargoyle, 5 Boss)
+      Skills/      #   26 chiêu + behaviour (chữ thập, xuyên giáp, dịch chuyển, hộ kiếm...)
+      Brains/      #   8 bộ não AI tất định + TelegraphedZoneEffect + StepTowardsEffect
+      Stages/      #   5 màn chơi (8×8, 9×9, 9×9, 10×10, 8×8) & cơ chế câu đố địa hình
+      Duels/       #   5 ClashDefinition (Phase 1) + 5 DuelDefinition (Phase 2)
+      Dialogues/   #   cốt truyện 3 hồi + thoại trước/sau 5 ải + 2 nhánh Ending A/B
+      Terrain/     #   8 loại địa hình (floor, wall, pit, cracked, poison, spike-trap, lava, chest hồi máu)
+    Game/          # BTH.Game — lớp hiển thị Unity 2D, điều khiển, hoạt ảnh, VFX, âm thanh, cài đặt
+    UI/            # BTH.UI — bảng màu Dark Fantasy & presenter giao diện
+    Editor/        # BTH.Editor — cấu hình tự động Pixel Art & menu công cụ Unity Editor
+    Art/           # Tài nguyên đồ họa gốc đã xử lý tách nền (Spritesheets, Tilesets, VFX, Portraits, Backgrounds)
+  Tests/           # BTH.Core.Tests — 81 test NUnit cho Core + Content + Duel + Art/Terrain
 Tools/
-  CoreTests/       # project dotnet để chạy test nhanh ngoài Unity
+  CoreTests/       # project dotnet để chạy test nhanh ngoài Unity (~90 ms)
+  slice_assets.py  # script Python tách nền & chuẩn hóa Spritesheets, Tileset, VFX, Portraits, Backgrounds
 Docs/
   KIEN_TRUC_UNITY_BEHIND_THE_HERO.md   # kiến trúc 4 lớp
   CORE_API_TONG_HOP.md                 # bảng tra class/hàm cho đồng đội
+  THIET_KE_PHASE2_DUEL.md              # đặc tả cơ chế Phase 2 Duel Mode
+  QUYET_DINH.md                        # các quyết định thiết kế đã chốt
+  KE_HOACH_HOAN_THANH_GAME.md          # tiến độ triển khai các pha P0–P6
+  BAO_CAO_CV3_NGUYEN_XUAN_LANG.md      # báo cáo chi tiết Spritesheets, Tileset, 5 màn chơi & UI/HUD
 ```
 
 Chi tiết kiến trúc: [Docs/KIEN_TRUC_UNITY_BEHIND_THE_HERO.md](Docs/KIEN_TRUC_UNITY_BEHIND_THE_HERO.md).
 Tra nhanh API: [Docs/CORE_API_TONG_HOP.md](Docs/CORE_API_TONG_HOP.md).
+Báo cáo Đồ họa, 5 Màn chơi & Giao diện: [Docs/BAO_CAO_CV3_NGUYEN_XUAN_LANG.md](Docs/BAO_CAO_CV3_NGUYEN_XUAN_LANG.md).
+
+## Cách chơi trong Unity Editor
+
+1. Mở project bằng **Unity 6000.6.7f1** (mở `Assets/Scenes/SampleScene.unity`).
+2. Bấm nút **Play (▶)** ở thanh công cụ phía trên (hoặc vào menu `Behind the Hero > 2. Chạy Game Ngay (Play Mode)`).
+3. `GameBootstrap` sẽ tự động khởi tạo bàn cờ, nhân vật, Boss, âm thanh và giao diện HUD:
+   - **Phím tắt & Chuột:** `[G]` Di chuyển (`Move`), `[S]` Đánh thường (`Slash`), `[1]` Trảm Tốc (`Swift Slash`), `[2]` Bùng Nổ Hoại Tử (`Necrotic Burst`), `[E]` / `[3]` Bước Nhảy Thời Gian (`Temporal Step`), `[D]` Phòng thủ (`Guard`), `[R]` Tua ngược thời gian (`Rewind`), `[X]` Chơi lại màn (`Reset`), `[Space]` Kết thúc lượt / Tiếp tục hội thoại.
 
 ## Chạy test
 
-**Cách 1 — ngoài Unity (nhanh, ~120 ms):**
+**Cách 1 — ngoài Unity (nhanh, ~90 ms):**
 
 ```powershell
 dotnet test Tools/CoreTests/CoreTests.csproj
@@ -56,10 +77,10 @@ dotnet test Tools/CoreTests/CoreTests.csproj
 Không có .NET SDK? Dùng bản Unity đang cài:
 
 ```powershell
-& "C:\Program Files\Unity\Hub\Editor\6000.6.7f1\Editor\Data\DotNetSdk\dotnet.exe" test Tools/CoreTests/CoreTests.csproj
+& "D:\Program Files\Unity\Hub\Editor\6000.6.7f1\Editor\Data\DotNetSdk\dotnet.exe" test Tools/CoreTests/CoreTests.csproj
 ```
 
-**Cách 2 — trong Unity:** mở project bằng Unity **6000.6.7f1**, vào `Window > General > Test Runner > EditMode > Run All`.
+**Cách 2 — trong Unity:** mở project bằng Unity **6000.6.7f1**, vào `Window > General > Test Runner > EditMode > Run All` (**81/81 Passed**).
 
 ## Nguyên tắc
 
