@@ -944,6 +944,9 @@ class SnapshotService : ISnapshotService { SnapshotService(GameState state, ISna
 ```csharp
 interface IRunKnowledge {
   int Deaths; IReadOnlyDictionary<string,int> Counters; IReadOnlyCollection<string> SeenKeys;
+  int KnownBossSkillCount; bool HasSeenBossSkill(string skillId);
+  bool HasWonClash(string bossSkillId, string playerSkillId);
+  void RecordClashWin(string bossSkillId, string playerSkillId);
   bool HasSeen(string key); void MarkSeen(string key);
   int GetCounter(string key); void Increment(string key, int amount = 1);
   void RegisterDeath();
@@ -954,7 +957,7 @@ class RunKnowledge : IRunKnowledge {
 }
 ```
 
-Nằm **ngoài** snapshot → rewind không xoá. Dùng cho codex/UI/thoại ("đã thấy chiêu boss", "số lần chết").
+`GameSession.StartStage` dùng lại bộ nhớ khi sang ải hoặc tải lại ải. Rewind giữ bộ nhớ ngoài snapshot. HUD hiển thị số lần gục, số chiêu boss đã biết và đòn đã từng thắng Clash. `Restart()` và `Reset()` tạo bộ nhớ mới.
 
 ### 11.7 Dialogue
 

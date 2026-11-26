@@ -40,7 +40,7 @@ namespace BTH.Game
             ["player_death"] = "SFX Tiếng vỡ tan của đồng hồ thời gian khi kích hoạt vòng lặp tử vong",
             ["enemy_death"] = "SFX Tiếng quái vật / Boss gục ngã",
             ["transform_dark"] = "SFX Hiệu ứng ma thuật hắc ám & Tua ngược thời gian (Rewind)",
-            ["transform_light"] = "SFX Hiệu ứng Thánh thuật & Khiên Hộ Mệnh (Guard / Protect)",
+            ["transform_light"] = "SFX Hiệu ứng Thánh thuật & Hộ Kiếm (Guard / Blade Guard)",
             ["dash"] = "SFX Tiếng bước chân lướt qua ô cờ",
             ["ui_confirm"] = "SFX Xác nhận lệnh / Qua lượt / Tiếp tục hội thoại",
             ["ui_select"] = "SFX Chọn ô cờ / Chuyển chế độ lệnh trên HUD"

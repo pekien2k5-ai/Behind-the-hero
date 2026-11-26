@@ -251,7 +251,6 @@ namespace BTH.Game
                 case "necrotic-ward":
                     return "vfx_necrotic_burst";
                 case "blade-guard":
-                case "protect":
                 case "divine-barrier":
                 case "eye-shield":
                     return "vfx_divine_barrier";

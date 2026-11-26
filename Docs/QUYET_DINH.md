@@ -29,8 +29,8 @@ Mỗi round Duel kết thúc bằng bước **tick status 2 bên** giống EndTu
 
 | # | Mục | Chốt |
 |---|---|---|
-| 10 | 3 lựa chọn mỗi ải | Ải 1: Blade Guard, Swift Slash, Necrotic Burst. Ải 2: Necrotic Ward, Necrotic Burst, Protect. Ải 3: Temporal Step, Swift Slash, Protect. Ải 4: Temporal Step, Blade Guard, Swift Slash. Ải 5: Blade Guard, Swift Slash, Necrotic Burst |
-| 11 | Bonus khắc chế | Default +3; Ải 4 Dodge/Temporal +5; Ải 5 Protect +4 |
+| 10 | 3 lựa chọn mỗi ải | Ải 1: Blade Guard, Swift Slash, Necrotic Burst. Ải 2: Necrotic Ward, Necrotic Burst, Blade Guard. Ải 3: Temporal Step, Swift Slash, Blade Guard. Ải 4: Temporal Step, Blade Guard, Swift Slash. Ải 5: Blade Guard, Swift Slash, Necrotic Burst |
+| 11 | Bonus khắc chế | Mặc định +3. Ải 4 Dodge/Temporal +5. Ải 5 Blade Guard +4 |
 | 12 | Protect vs Blade Guard | Là cùng một chiêu; id `blade-guard`, hiển thị "Blade Guard". Guard thường trên bàn cờ vẫn là `ActionKind.Guard` |
 | 13 | Phase 1 màn boss | Solo 1v1, **chỉ boss**, không Imp/Gargoyle |
 | 14 | Transition | 1 prefab dùng chung, 1,2 s, không cho skip lần đầu; 5 background riêng |
@@ -41,6 +41,7 @@ Mỗi round Duel kết thúc bằng bước **tick status 2 bên** giống EndTu
 
 - Eosphoros đồng minh: **cắt khỏi gameplay** (docx quy định solo 1v1); chỉ xuất hiện trong cutscene/dialogue ải 5.
 - Rewind: về `StageStart` / `TurnStart` / `ClashStart` (đầu Duel); `RunKnowledge` giữ qua rewind. Checkpoint `StageStart`/`TurnStart` được đẩy **sau khi vào pha Player** (đã công bố telegraph), nên rewind luôn trả về lượt chơi được.
+- `RunKnowledge` giữ số lần gục, chiêu boss đã gặp và cặp chiêu đã thắng Clash khi sang ải hoặc tải lại ải trong cùng run. HUD dùng ký ức để đánh dấu chiêu boss đã gặp và đòn từng khắc chế thành công.
 - Hazard trên bàn cờ: mỗi unit chỉ ăn **một lần mỗi lượt**, lấy ô có `HazardDamagePerTurn` cao nhất trong footprint (không cộng dồn theo số ô).
 - Tầm đánh/tầm chiêu tính theo **khoảng cách footprint** (min Manhattan giữa các ô), không dùng `Center` — để boss 2×2 (Malkor) bị đánh từ mọi ô kề.
 - Không save giữa run (ADR-05).

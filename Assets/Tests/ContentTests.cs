@@ -46,6 +46,83 @@ namespace BTH.Core.Tests
         }
 
         [Test]
+        public void RunKnowledge_PersistsAcrossRewindAndStageLoads()
+        {
+            var session = ContentCatalog.CreateSession();
+            session.StartStage("stage-1");
+            var stageOne = session.State;
+            var knowledge = session.Knowledge;
+            const string boardSkill = "axe-cleave";
+            const string ultimate = "ashen-fury";
+
+            knowledge.MarkSeen("dialogue-intro");
+            Assert.That(knowledge.KnownBossSkillCount, Is.Zero);
+            Assert.That(knowledge.HasSeenBossSkill(boardSkill), Is.False);
+            Assert.That(session.EndTurn().Success, Is.True);
+            Assert.That(knowledge.HasSeenBossSkill(boardSkill), Is.True);
+
+            session.EnterDuel();
+            var hero = stageOne.Units.Player.Id;
+            Assert.That(knowledge.HasWonClash(ultimate, "swift-slash"), Is.False);
+            Assert.That(session.TryExecute(ActionRequest.ClashSkill(hero, "swift-slash")).Success, Is.True);
+            Assert.That(knowledge.HasWonClash(ultimate, "swift-slash"), Is.True);
+            Assert.That(knowledge.HasWonClash(boardSkill, "swift-slash"), Is.False);
+            Assert.That(session.TryExecute(ActionRequest.ClashSkill(hero, "blade-guard")).Success, Is.True);
+            Assert.That(session.TryExecute(ActionRequest.ClashSkill(hero, "necrotic-burst")).Success, Is.True);
+            Assert.That(stageOne.Result, Is.EqualTo(StageResult.DefeatPlayerDead));
+
+            stageOne.Snapshots.Rewind();
+            Assert.That(knowledge.HasWonClash(ultimate, "swift-slash"), Is.True);
+            Assert.That(knowledge.HasWonClash(ultimate, "necrotic-burst"), Is.False);
+            Assert.That(knowledge.KnownBossSkillCount, Is.EqualTo(2));
+
+            string previousBusUpdate = null;
+            using var previousSubscription = stageOne.Events.Subscribe<RunKnowledgeUpdatedEvent>(
+                (in RunKnowledgeUpdatedEvent e) => previousBusUpdate = e.Key);
+            session.StartStage("stage-2");
+            Assert.That(session.Knowledge, Is.SameAs(knowledge));
+            Assert.That(session.Knowledge.Deaths, Is.EqualTo(1));
+            Assert.That(session.Knowledge.HasSeenBossSkill(ultimate), Is.True);
+            Assert.That(session.Knowledge.HasWonClash(ultimate, "swift-slash"), Is.True);
+
+            string currentBusUpdate = null;
+            using var currentSubscription = session.Events.Subscribe<RunKnowledgeUpdatedEvent>(
+                (in RunKnowledgeUpdatedEvent e) => currentBusUpdate = e.Key);
+            Assert.That(session.EndTurn().Success, Is.True);
+            Assert.That(currentBusUpdate, Is.EqualTo(RunKnowledge.BossSkillSeenPrefix + "poison-dance"));
+            Assert.That(previousBusUpdate, Is.Null);
+            Assert.That(knowledge.KnownBossSkillCount, Is.EqualTo(3));
+
+            session.StartStage("stage-2");
+            Assert.That(session.Knowledge.Deaths, Is.EqualTo(1));
+            Assert.That(session.Knowledge.KnownBossSkillCount, Is.EqualTo(3));
+            session.Restart();
+            Assert.That(session.Knowledge.Deaths, Is.Zero);
+            Assert.That(session.Knowledge.KnownBossSkillCount, Is.Zero);
+            Assert.That(session.Knowledge.HasWonClash(ultimate, "swift-slash"), Is.False);
+        }
+
+        [Test]
+        public void BladeGuard_IsTheOnlyGuardCardAndKeepsEachStageBonus()
+        {
+            var session = ContentCatalog.CreateSession();
+            Assert.That(session.Skills.TryGet("protect", out _), Is.False);
+            Assert.That(UnitCatalog.CreateWanderer().SkillIds, Does.Not.Contain("protect"));
+
+            int[] expectedBonuses = { 3, -2, 0, 4, 4 };
+            for (int i = 0; i < expectedBonuses.Length; i++)
+            {
+                session.StartStage("stage-" + (i + 1));
+                session.EnterDuel();
+                var options = session.State.Duel.GetOptions();
+                Assert.That(options.Count, Is.EqualTo(3));
+                var bladeGuard = options.Single(option => option.SkillId == "blade-guard");
+                Assert.That(bladeGuard.DisplayName, Is.EqualTo("Blade Guard"));
+                Assert.That(bladeGuard.Prediction.Bonus, Is.EqualTo(expectedBonuses[i]));
+            }
+        }
+
+        [Test]
         public void Stage1_CanBePlayedFromBoardToDuelVictory_WithoutUnity()
         {
             var session = ContentCatalog.CreateSession();
