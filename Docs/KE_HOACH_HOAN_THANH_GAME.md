@@ -11,7 +11,7 @@
 |---|---|
 | **Core** `Assets/_Project/Core` | ✅ **163 file**, 6.608 dòng. Grid, Units, Turn, Actions, Combat (skill/effect/status/clash/**duel**), Ai, Run (rules/stage/snapshot/event/dialogue/session) |
 | **Duel mode (Phase 2)** | ✅ **đã hoàn tất từ Core tới UI**: `TurnPhase.Duel`, `ClashDuel`/`DuelState`/`IClashDuel`, `EnterDuel` khi boss <70%, auto finisher, `DuelSnapshot`, transition + màn hình Duel 3 thẻ chiêu + dự báo Thắng/Hòa/Thua |
-| **Test** `Assets/Tests` | ✅ **81 test / 11 bộ**, xanh `dotnet test` (~90 ms) và **Unity EditMode 81/81** (2026-11-19) |
+| **Test** `Assets/Tests` | ✅ **98 test EditMode/dotnet** (`dotnet test` ~100 ms & Unity EditMode 98/98) + **PlayMode smoke test** (`Assets/Tests/PlayMode/GameFlowPlayModeTests.cs`) |
 | **Harness** `Tools/CoreTests` | ✅ chạy test ngoài Unity bằng .NET 8 SDK; đã include cả Core + Content |
 | **Content** `Assets/_Project/Content` | ✅ **đã hoàn tất**: 9 unit (`UnitCatalog`), 26 chiêu + behaviour (`SkillCatalog`), 8 brain (`BrainCatalog`), 8 loại địa hình tương tác (`TerrainCatalog`), 5 màn (`StageCatalog`), 5 Duel (`DuelCatalog`), cốt truyện 3 hồi + thoại 5 ải + 2 Ending (`DialogueCatalog`), `GameMatrixCatalog`, `TacticalNavigator`, `ArtAssetCatalog`, `ContentCatalog` |
 | **Unity presentation** `Assets/_Project/Game` | ✅ **đã hoàn tất**: `GameBootstrap`, `ArtCatalog`, `UnitSpriteAnimator` (4 trạng thái `Idle/Walk/Attack/Death`), `VfxPopupManager` (12 dải VFX + popup sát thương), `AudioCatalog`, `GameOptionsModel` |

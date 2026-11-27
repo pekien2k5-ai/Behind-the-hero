@@ -47,7 +47,7 @@ namespace BTH.Game
             ["enemy_hurt"] = "SFX Quái vật hoặc Boss trúng đòn và còn sống",
             ["checkpoint"] = "SFX Xác nhận khi mở rương",
             ["transform_dark"] = "SFX Hiệu ứng ma thuật hắc ám & Tua ngược thời gian (Rewind)",
-            ["transform_light"] = "SFX Hiệu ứng Thánh thuật & Khiên Hộ Mệnh (Guard / Protect)",
+            ["transform_light"] = "SFX Hiệu ứng Thánh thuật & Hộ Kiếm (Guard / Blade Guard)",
             ["dash"] = "SFX Tiếng bước chân lướt qua ô cờ",
             ["ui_confirm"] = "SFX Xác nhận lệnh / Qua lượt / Tiếp tục hội thoại",
             ["ui_select"] = "SFX Chọn ô cờ / Chuyển chế độ lệnh trên HUD"
@@ -59,12 +59,22 @@ namespace BTH.Game
     /// </summary>
     public sealed class GameOptionsModel
     {
+        public static readonly (int Width, int Height)[] SupportedResolutions =
+        {
+            (1280, 720),
+            (1600, 900),
+            (1920, 1080)
+        };
+
         public float MasterVolume { get; set; } = 1.0f;
         public float BgmVolume { get; set; } = 0.40f;
         public float SfxVolume { get; set; } = 0.75f;
         public float AnimationSpeed { get; set; } = 1.0f; // x1, x1.5, x2
+        public int ResolutionIndex { get; set; } = 0; // 0: 1280x720, 1: 1600x900, 2: 1920x1080
+        public bool Fullscreen { get; set; } = false;
         public bool ShowGridOverlay { get; set; } = true;
         public bool ShowDangerZoneWarning { get; set; } = true;
+        public bool ShowDevStageBar { get; set; } = false;
 
         public void LoadFromPrefs()
         {
@@ -72,8 +82,11 @@ namespace BTH.Game
             BgmVolume = PlayerPrefs.GetFloat("BTH_BgmVol", 0.40f);
             SfxVolume = PlayerPrefs.GetFloat("BTH_SfxVol", 0.75f);
             AnimationSpeed = PlayerPrefs.GetFloat("BTH_AnimSpeed", 1.0f);
+            ResolutionIndex = Mathf.Clamp(PlayerPrefs.GetInt("BTH_ResIndex", 0), 0, SupportedResolutions.Length - 1);
+            Fullscreen = PlayerPrefs.GetInt("BTH_Fullscreen", 0) == 1;
             ShowGridOverlay = PlayerPrefs.GetInt("BTH_ShowGrid", 1) == 1;
             ShowDangerZoneWarning = PlayerPrefs.GetInt("BTH_ShowDanger", 1) == 1;
+            ShowDevStageBar = PlayerPrefs.GetInt("BTH_DevStageBar", 0) == 1;
         }
 
         public void SaveToPrefs()
@@ -82,9 +95,21 @@ namespace BTH.Game
             PlayerPrefs.SetFloat("BTH_BgmVol", BgmVolume);
             PlayerPrefs.SetFloat("BTH_SfxVol", SfxVolume);
             PlayerPrefs.SetFloat("BTH_AnimSpeed", AnimationSpeed);
+            PlayerPrefs.SetInt("BTH_ResIndex", ResolutionIndex);
+            PlayerPrefs.SetInt("BTH_Fullscreen", Fullscreen ? 1 : 0);
             PlayerPrefs.SetInt("BTH_ShowGrid", ShowGridOverlay ? 1 : 0);
             PlayerPrefs.SetInt("BTH_ShowDanger", ShowDangerZoneWarning ? 1 : 0);
+            PlayerPrefs.SetInt("BTH_DevStageBar", ShowDevStageBar ? 1 : 0);
             PlayerPrefs.Save();
+        }
+
+        public void ApplyDisplaySettings()
+        {
+#if !UNITY_EDITOR
+            int idx = Mathf.Clamp(ResolutionIndex, 0, SupportedResolutions.Length - 1);
+            var (w, h) = SupportedResolutions[idx];
+            Screen.SetResolution(w, h, Fullscreen);
+#endif
         }
     }
 }

@@ -9,9 +9,12 @@ namespace BTH.Content.Duels
         {
             var rules = new ClashRuleTable { DefaultBonus = 3 };
             rules.Add(new ClashRule("blade-guard", "ashen-fury", 3));
-            rules.Add(new ClashRule("protect", "ashen-fury", 3));
             rules.Add(new ClashRule("swift-slash", "ashen-fury", 3));
             rules.Add(new ClashRule("necrotic-burst", "ashen-fury", 0));
+
+            rules.Add(new ClashRule("blade-guard", "axe-cleave", -2));
+            rules.Add(new ClashRule("swift-slash", "axe-cleave", -4));
+            rules.Add(new ClashRule("necrotic-burst", "axe-cleave", -4));
 
             return new ClashDefinition
             {
@@ -48,7 +51,11 @@ namespace BTH.Content.Duels
             var rules = new ClashRuleTable { DefaultBonus = 3 };
             rules.Add(new ClashRule("necrotic-ward", "plague-storm", 3));
             rules.Add(new ClashRule("necrotic-burst", "plague-storm", 3));
-            rules.Add(new ClashRule("protect", "plague-storm", -2));
+            rules.Add(new ClashRule("blade-guard", "plague-storm", -2));
+
+            rules.Add(new ClashRule("necrotic-ward", "poison-dance", 1));
+            rules.Add(new ClashRule("necrotic-burst", "poison-dance", -4));
+            rules.Add(new ClashRule("blade-guard", "poison-dance", -7));
 
             return new ClashDefinition
             {
@@ -71,7 +78,7 @@ namespace BTH.Content.Duels
                 MusicId = "boss_theme",
                 TransitionId = "transition_morbida",
                 BossSkillIds = new List<string> { "plague-storm", "poison-dance" },
-                PlayerSkillIds = new List<string> { "necrotic-ward", "necrotic-burst", "protect" },
+                PlayerSkillIds = new List<string> { "necrotic-ward", "necrotic-burst", "blade-guard" },
                 DrawChipRatio = 0.10f,
                 FinisherCount = 1,
                 Rules = clash.Rules,
@@ -86,7 +93,12 @@ namespace BTH.Content.Duels
             rules.Add(new ClashRule("temporal-step", "void-spear-beam", 3));
             rules.Add(new ClashRule("dodge", "void-spear-beam", 3));
             rules.Add(new ClashRule("swift-slash", "void-spear-beam", 3));
-            rules.Add(new ClashRule("protect", "void-spear-beam", 0));
+            rules.Add(new ClashRule("blade-guard", "void-spear-beam", 0));
+
+            rules.Add(new ClashRule("temporal-step", "spear-thrust", -2));
+            rules.Add(new ClashRule("dodge", "spear-thrust", -2));
+            rules.Add(new ClashRule("swift-slash", "spear-thrust", -3));
+            rules.Add(new ClashRule("blade-guard", "spear-thrust", -5));
 
             return new ClashDefinition
             {
@@ -109,7 +121,7 @@ namespace BTH.Content.Duels
                 MusicId = "boss_theme",
                 TransitionId = "transition_abyss",
                 BossSkillIds = new List<string> { "void-spear-beam", "spear-thrust" },
-                PlayerSkillIds = new List<string> { "temporal-step", "swift-slash", "protect" },
+                PlayerSkillIds = new List<string> { "temporal-step", "swift-slash", "blade-guard" },
                 DrawChipRatio = 0.10f,
                 FinisherCount = 1,
                 Rules = clash.Rules,
@@ -125,6 +137,11 @@ namespace BTH.Content.Duels
             rules.Add(new ClashRule("dodge", "hellfire-greatsword", 5));
             rules.Add(new ClashRule("blade-guard", "hellfire-greatsword", 4));
             rules.Add(new ClashRule("swift-slash", "hellfire-greatsword", 1));
+
+            rules.Add(new ClashRule("blade-guard", "fireball", 0));
+            rules.Add(new ClashRule("temporal-step", "fireball", -4));
+            rules.Add(new ClashRule("dodge", "fireball", -2));
+            rules.Add(new ClashRule("swift-slash", "fireball", -3));
 
             return new ClashDefinition
             {
@@ -160,9 +177,12 @@ namespace BTH.Content.Duels
         {
             var rules = new ClashRuleTable { DefaultBonus = 3 };
             rules.Add(new ClashRule("blade-guard", "holy-light-slash", 4));
-            rules.Add(new ClashRule("protect", "holy-light-slash", 4));
             rules.Add(new ClashRule("swift-slash", "holy-light-slash", 5));
             rules.Add(new ClashRule("necrotic-burst", "holy-light-slash", 0));
+
+            rules.Add(new ClashRule("swift-slash", "holy-strike", 1));
+            rules.Add(new ClashRule("blade-guard", "holy-strike", -3));
+            rules.Add(new ClashRule("necrotic-burst", "holy-strike", -2));
 
             return new ClashDefinition
             {

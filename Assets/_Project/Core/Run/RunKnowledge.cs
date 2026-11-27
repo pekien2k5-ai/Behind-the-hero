@@ -8,10 +8,11 @@ namespace BTH.Core.Run
     {
         public const string DeathsKey = "deaths";
         public const string BossSkillSeenPrefix = "boss-skill:";
+        public const string ClashWinPrefix = "clash-win:";
 
         private readonly HashSet<string> _seen = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<string, int> _counters = new Dictionary<string, int>(StringComparer.Ordinal);
-        private readonly IEventBus _events;
+        private IEventBus _events;
 
         public RunKnowledge(IEventBus events = null)
         {
@@ -24,6 +25,68 @@ namespace BTH.Core.Run
 
         public IReadOnlyCollection<string> SeenKeys => _seen;
 
+        public int KnownBossSkillCount { get; private set; }
+
+        internal void AttachEventBus(IEventBus events)
+        {
+            _events = events;
+        }
+
+        public bool HasSeenBossSkill(string skillId)
+        {
+            return !string.IsNullOrEmpty(skillId) && HasSeen(BossSkillSeenPrefix + skillId);
+        }
+
+        public IReadOnlyList<string> GetSeenBossSkillIds()
+        {
+            var result = new List<string>();
+            foreach (var key in _seen)
+            {
+                if (key.Length > BossSkillSeenPrefix.Length &&
+                    key.StartsWith(BossSkillSeenPrefix, StringComparison.Ordinal))
+                {
+                    result.Add(key.Substring(BossSkillSeenPrefix.Length));
+                }
+            }
+
+            result.Sort(StringComparer.Ordinal);
+            return result;
+        }
+
+        public bool HasWonClash(string bossSkillId, string playerSkillId)
+        {
+            return HasSeen(ClashWinKey(bossSkillId, playerSkillId));
+        }
+
+        public IReadOnlyList<string> GetWonClashPlayerSkills(string bossSkillId)
+        {
+            var result = new List<string>();
+            if (string.IsNullOrEmpty(bossSkillId))
+            {
+                return result;
+            }
+
+            string prefix = ClashWinPrefix + bossSkillId + "|";
+            foreach (var key in _seen)
+            {
+                if (key.Length > prefix.Length && key.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    result.Add(key.Substring(prefix.Length));
+                }
+            }
+
+            result.Sort(StringComparer.Ordinal);
+            return result;
+        }
+
+        public void RecordClashWin(string bossSkillId, string playerSkillId)
+        {
+            if (!string.IsNullOrEmpty(bossSkillId) && !string.IsNullOrEmpty(playerSkillId))
+            {
+                MarkSeen(ClashWinKey(bossSkillId, playerSkillId));
+            }
+        }
+
         public bool HasSeen(string key)
         {
             return !string.IsNullOrEmpty(key) && _seen.Contains(key);
@@ -34,6 +97,11 @@ namespace BTH.Core.Run
             if (string.IsNullOrEmpty(key) || !_seen.Add(key))
             {
                 return;
+            }
+
+            if (key.Length > BossSkillSeenPrefix.Length && key.StartsWith(BossSkillSeenPrefix, StringComparison.Ordinal))
+            {
+                KnownBossSkillCount++;
             }
 
             Publish(key, 1);
@@ -64,6 +132,11 @@ namespace BTH.Core.Run
         public void RegisterDeath()
         {
             Increment(DeathsKey);
+        }
+
+        private static string ClashWinKey(string bossSkillId, string playerSkillId)
+        {
+            return ClashWinPrefix + bossSkillId + "|" + playerSkillId;
         }
 
         private void Publish(string key, int value)

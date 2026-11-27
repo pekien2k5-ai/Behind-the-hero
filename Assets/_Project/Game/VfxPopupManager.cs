@@ -60,7 +60,7 @@ namespace BTH.Game
         {
             _popups.Add(new FloatingPopup
             {
-                WorldPos = worldPos + new Vector3(Random.Range(-0.15f, 0.15f), 0.55f, 0f),
+                WorldPos = worldPos + new Vector3(Random.Range(-0.12f, 0.12f), 0.92f, 0f),
                 Text = text,
                 Color = color,
                 Elapsed = 0f,

@@ -8,10 +8,10 @@ Người chơi điều khiển **Wanderer (Kẻ Lang Thang)** qua 5 ải, mỗi 
 
 | Phần | Trạng thái |
 |---|---|
-| **Core (`BTH.Core`)** — luật chơi (C# thuần, không dùng `UnityEngine`) | ✅ 163 file, **81/81 unit test xanh** (`dotnet test` & Unity EditMode) |
-| **Content (`BTH.Content`)** — đơn vị, chiêu, AI, 8 địa hình, 5 màn, 5 Duel, thoại 3 hồi | ✅ 9 unit, 26 chiêu + behaviour, 8 brain, 8 địa hình tương tác, 5 màn, 5 Duel, 10 đồ thị thoại |
-| **Unity (`BTH.Game` & `BTH.Editor`)** — bàn cờ Tileset, Spritesheet 4 trạng thái, VFX, Input, Audio | ✅ Đã hoàn thành (`GameBootstrap`, `ArtCatalog`, `UnitSpriteAnimator`, `VfxPopupManager`, `AudioCatalog`) |
-| **UI (`BTH.UI`)** — HUD chiến thuật, khung chân dung đối thoại, màn hình Phase 2 Duel, Cài đặt | ✅ Đã hoàn thành (tự động khởi chạy ngay khi bấm **Play ▶** trong Unity Editor) |
+| **Core (`BTH.Core`)** — luật chơi (C# thuần, không dùng `UnityEngine`) | ✅ 163 file, **98/98 unit test xanh** (`dotnet test` & Unity EditMode) |
+| **Content (`BTH.Content`)** — đơn vị, chiêu, AI, 8 địa hình, 5 màn, 5 Duel, thoại 3 hồi | ✅ 9 unit, 25 chiêu + behaviour (đã thống nhất `blade-guard`), 8 brain (hỗ trợ LOS & bảo toàn địa hình), 8 địa hình tương tác, 5 màn, 5 Duel cân bằng cả vòng lẻ & chẵn, 10 đồ thị thoại riêng |
+| **Unity (`BTH.Game` & `BTH.Editor`)** — Main Menu, Lore 3 Hồi, Hướng dẫn, Credits, Pause, Cutscene hoạt ảnh, bàn cờ Tileset, Spritesheet 4 trạng thái, VFX, Input, Audio | ✅ Đã hoàn thành (`GameBootstrap`, `CutsceneController`, `ArtCatalog`, `UnitSpriteAnimator`, `VfxPopupManager`, `AudioCatalog`) |
+| **UI (`BTH.UI`)** — Main Menu, Pause Menu, Sổ tay Chiêu đã học (`[K]`), HUD (Cooldown, AoE Cross preview, Combat Log), Cutscene nhân vật, Phase 2 Duel (`[H]` Gợi ý & Combo 3 hit), Cài đặt (Resolution/Fullscreen) | ✅ Đã hoàn thành + PlayMode Test (`GameFlowPlayModeTests`) |
 | **Art & Audio (`Assets/_Project/Art` & `Assets/Resources`)** — Spritesheets, Tileset, VFX, Portraits, BGM/SFX | ✅ 9 Spritesheets (`Idle/Walk/Attack/Death`), 25 Tiles + Atlas, 12 VFX strips, 7 Portraits, 5 Duel Backgrounds, 2 BGM + 14 SFX |
 
 ## Cấu trúc
@@ -42,7 +42,7 @@ Assets/
     UI/            # BTH.UI — bảng màu Dark Fantasy & presenter giao diện
     Editor/        # BTH.Editor — cấu hình tự động Pixel Art & menu công cụ Unity Editor
     Art/           # Tài nguyên đồ họa gốc đã xử lý tách nền (Spritesheets, Tilesets, VFX, Portraits, Backgrounds)
-  Tests/           # BTH.Core.Tests — 81 test NUnit cho Core + Content + Duel + Art/Terrain
+  Tests/           # BTH.Core.Tests (98 EditMode/dotnet tests) + PlayMode/ (GameFlowPlayModeTests)
 Tools/
   CoreTests/       # project dotnet để chạy test nhanh ngoài Unity (~90 ms)
   slice_assets.py  # script Python tách nền & chuẩn hóa Spritesheets, Tileset, VFX, Portraits, Backgrounds

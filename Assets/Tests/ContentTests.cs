@@ -46,6 +46,122 @@ namespace BTH.Core.Tests
         }
 
         [Test]
+        public void RunKnowledge_PersistsAcrossRewindAndStageLoads()
+        {
+            var session = ContentCatalog.CreateSession();
+            session.StartStage("stage-1");
+            var stageOne = session.State;
+            var knowledge = session.Knowledge;
+            const string boardSkill = "axe-cleave";
+            const string ultimate = "ashen-fury";
+
+            knowledge.MarkSeen("dialogue-intro");
+            Assert.That(knowledge.KnownBossSkillCount, Is.Zero);
+            Assert.That(knowledge.HasSeenBossSkill(boardSkill), Is.False);
+            Assert.That(session.EndTurn().Success, Is.True);
+            Assert.That(knowledge.HasSeenBossSkill(boardSkill), Is.True);
+
+            session.EnterDuel();
+            var hero = stageOne.Units.Player.Id;
+            Assert.That(knowledge.HasWonClash(ultimate, "swift-slash"), Is.False);
+            Assert.That(session.TryExecute(ActionRequest.ClashSkill(hero, "swift-slash")).Success, Is.True);
+            Assert.That(knowledge.HasWonClash(ultimate, "swift-slash"), Is.True);
+            Assert.That(knowledge.HasWonClash(boardSkill, "swift-slash"), Is.False);
+            Assert.That(session.TryExecute(ActionRequest.ClashSkill(hero, "blade-guard")).Success, Is.True);
+            Assert.That(session.TryExecute(ActionRequest.ClashSkill(hero, "necrotic-burst")).Success, Is.True);
+            Assert.That(stageOne.Result, Is.EqualTo(StageResult.DefeatPlayerDead));
+
+            stageOne.Snapshots.Rewind();
+            Assert.That(knowledge.HasWonClash(ultimate, "swift-slash"), Is.True);
+            Assert.That(knowledge.HasWonClash(ultimate, "necrotic-burst"), Is.False);
+            Assert.That(knowledge.KnownBossSkillCount, Is.EqualTo(2));
+
+            string previousBusUpdate = null;
+            using var previousSubscription = stageOne.Events.Subscribe<RunKnowledgeUpdatedEvent>(
+                (in RunKnowledgeUpdatedEvent e) => previousBusUpdate = e.Key);
+            session.StartStage("stage-2");
+            Assert.That(session.Knowledge, Is.SameAs(knowledge));
+            Assert.That(session.Knowledge.Deaths, Is.EqualTo(1));
+            Assert.That(session.Knowledge.HasSeenBossSkill(ultimate), Is.True);
+            Assert.That(session.Knowledge.HasWonClash(ultimate, "swift-slash"), Is.True);
+
+            string currentBusUpdate = null;
+            using var currentSubscription = session.Events.Subscribe<RunKnowledgeUpdatedEvent>(
+                (in RunKnowledgeUpdatedEvent e) => currentBusUpdate = e.Key);
+            Assert.That(session.EndTurn().Success, Is.True);
+            Assert.That(currentBusUpdate, Is.EqualTo(RunKnowledge.BossSkillSeenPrefix + "poison-dance"));
+            Assert.That(previousBusUpdate, Is.Null);
+            Assert.That(knowledge.KnownBossSkillCount, Is.EqualTo(3));
+
+            session.StartStage("stage-2");
+            Assert.That(session.Knowledge.Deaths, Is.EqualTo(1));
+            Assert.That(session.Knowledge.KnownBossSkillCount, Is.EqualTo(3));
+            CollectionAssert.AreEqual(
+                new[] { ultimate, boardSkill, "poison-dance" },
+                session.Knowledge.GetSeenBossSkillIds());
+            CollectionAssert.AreEqual(
+                new[] { "swift-slash" },
+                session.Knowledge.GetWonClashPlayerSkills(ultimate));
+            session.Restart();
+            Assert.That(session.Knowledge.Deaths, Is.Zero);
+            Assert.That(session.Knowledge.KnownBossSkillCount, Is.Zero);
+            Assert.That(session.Knowledge.HasWonClash(ultimate, "swift-slash"), Is.False);
+            Assert.That(session.Knowledge.GetSeenBossSkillIds(), Is.Empty);
+            Assert.That(session.Knowledge.GetWonClashPlayerSkills(ultimate), Is.Empty);
+        }
+
+        [Test]
+        public void Stage1_IntroDialogue_ContainsAnimatedConversationBetweenEosphorosAndWanderer()
+        {
+            var graph = DialogueCatalog.GetIntro("stage-1");
+            Assert.IsNotNull(graph);
+            Assert.IsEmpty(graph.Validate());
+
+            var runner = new DialogueRunner(graph);
+            runner.Start();
+            var speakers = new List<string>();
+            int safety = 0;
+            while (!runner.IsFinished && safety++ < 30)
+            {
+                speakers.Add(runner.Current.Speaker);
+                runner.Advance();
+            }
+
+            Assert.IsTrue(runner.IsFinished);
+            CollectionAssert.Contains(speakers, DialogueCatalog.Narrator);
+            CollectionAssert.Contains(speakers, UnitCatalog.EosphorosId);
+            CollectionAssert.Contains(speakers, UnitCatalog.WandererId);
+            CollectionAssert.Contains(speakers, UnitCatalog.AshenExecutionerId);
+
+            int firstEosphoros = speakers.IndexOf(UnitCatalog.EosphorosId);
+            int wandererReply = speakers.IndexOf(UnitCatalog.WandererId, firstEosphoros + 1);
+            int bossReveal = speakers.IndexOf(UnitCatalog.AshenExecutionerId, wandererReply + 1);
+            Assert.Greater(firstEosphoros, 0);
+            Assert.Greater(wandererReply, firstEosphoros);
+            Assert.Greater(bossReveal, wandererReply);
+        }
+
+        [Test]
+        public void BladeGuard_IsTheOnlyGuardCardAndKeepsEachStageBonus()
+        {
+            var session = ContentCatalog.CreateSession();
+            Assert.That(session.Skills.TryGet("protect", out _), Is.False);
+            Assert.That(UnitCatalog.CreateWanderer().SkillIds, Does.Not.Contain("protect"));
+
+            int[] expectedBonuses = { 3, -2, 0, 4, 4 };
+            for (int i = 0; i < expectedBonuses.Length; i++)
+            {
+                session.StartStage("stage-" + (i + 1));
+                session.EnterDuel();
+                var options = session.State.Duel.GetOptions();
+                Assert.That(options.Count, Is.EqualTo(3));
+                var bladeGuard = options.Single(option => option.SkillId == "blade-guard");
+                Assert.That(bladeGuard.DisplayName, Is.EqualTo("Blade Guard"));
+                Assert.That(bladeGuard.Prediction.Bonus, Is.EqualTo(expectedBonuses[i]));
+            }
+        }
+
+        [Test]
         public void Stage1_CanBePlayedFromBoardToDuelVictory_WithoutUnity()
         {
             var session = ContentCatalog.CreateSession();
@@ -438,6 +554,165 @@ namespace BTH.Core.Tests
                 string p = Path.Combine(resRoot, "Art", "Backgrounds", duel.BackgroundId + ".png");
                 Assert.IsTrue(File.Exists(p), $"Thiếu file Background Duel: {p}");
             }
+        }
+
+        [Test]
+        public void TelegraphedZoneEffect_PreservesWallsPitsChests_AndUsesPoisonMoveCostTwo()
+        {
+            var session = ContentCatalog.CreateSession();
+            var stage = StageCatalog.CreateStage2();
+            // Đặt Player cạnh rương (4,7), tường (3,5) và hố (1,2) gần tầm Morbida
+            stage.Terrains.Add(TerrainCatalog.CreateOverride(4, 2, TerrainId.Wall));
+            stage.Terrains.Add(TerrainCatalog.CreateOverride(5, 2, TerrainId.Chest));
+            stage.Terrains.Add(TerrainCatalog.CreateOverride(3, 2, TerrainId.Pit));
+            stage.PlayerSpawn = new GridCoord(4, 3);
+            session.StartStage(stage);
+
+            var state = session.State;
+            // EndTurn lần 1 sang lượt 2 (chẵn) -> Morbida lên lịch Grave Hands chữ thập quanh Player (4,3)
+            Assert.That(session.EndTurn().Success, Is.True);
+            // EndTurn lần 2 -> Grave Hands thực thi: rải Poison nhưng không ghi đè Wall/Chest/Pit và MOV=2
+            Assert.That(session.EndTurn().Success, Is.True);
+
+            Assert.That(state.Grid.Get(new GridCoord(4, 2)).Terrain, Is.EqualTo(TerrainId.Wall));
+            Assert.That(state.Grid.Get(new GridCoord(5, 2)).Terrain, Is.EqualTo(TerrainId.Chest));
+            Assert.That(state.Grid.Get(new GridCoord(3, 2)).Terrain, Is.EqualTo(TerrainId.Pit));
+            Assert.That(state.Grid.Get(new GridCoord(4, 3)).Terrain, Is.EqualTo(TerrainId.Poison));
+            Assert.That(state.Grid.Get(new GridCoord(4, 3)).MovementCost, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Stage2_Morbida_LineOfSightBlockedByWall_ProtectsPlayer()
+        {
+            var session = ContentCatalog.CreateSession();
+            var stage = StageCatalog.CreateStage2();
+            stage.Terrains.Add(TerrainCatalog.CreateOverride(3, 3, TerrainId.Wall));
+            stage.PlayerSpawn = new GridCoord(2, 3);
+            session.StartStage(stage);
+
+            var state = session.State;
+            var player = state.Units.Player;
+            int hpBefore = player.Hp;
+
+            // Lượt 1 kết thúc -> sang lượt 2 (Grave Hands)
+            Assert.That(session.EndTurn().Success, Is.True);
+            Assert.That(state.Telegraph.TryGet(state.Units.Boss.Id, out var intent), Is.True);
+            Assert.That(intent.DangerCells.Contains(player.Position), Is.False);
+
+            // Lượt 2 kết thúc -> Morbida tung Grave Hands nhưng bị tường (3,3) chắn LOS
+            Assert.That(session.EndTurn().Success, Is.True);
+            Assert.That(player.Hp, Is.EqualTo(hpBefore));
+        }
+
+        [Test]
+        public void AllFiveStages_DuelRound1AndRound2_HaveWinAndLoseOptions()
+        {
+            var session = ContentCatalog.CreateSession();
+            foreach (var stage in StageCatalog.All())
+            {
+                session.StartStage(stage.Id);
+                session.EnterDuel();
+                var r1 = session.State.Duel.GetOptions();
+                Assert.That(r1.Any(o => o.Prediction.Result == ClashResult.Win), Is.True, $"{stage.Id} R1 thiếu Win");
+                Assert.That(r1.Any(o => o.Prediction.Result != ClashResult.Win), Is.True, $"{stage.Id} R1 quá dễ (all Win)");
+
+                // Dùng lựa chọn Win R1 để qua Round 2
+                var r1Win = r1.First(o => o.Prediction.Result == ClashResult.Win);
+                Assert.That(session.TryExecute(ActionRequest.ClashSkill(session.State.Units.Player.Id, r1Win.SkillId)).Success, Is.True);
+                if (session.State.IsOver) continue;
+
+                var r2 = session.State.Duel.GetOptions();
+                Assert.That(r2.Any(o => o.Prediction.Result == ClashResult.Win), Is.True, $"{stage.Id} R2 thiếu Win");
+                Assert.That(r2.Any(o => o.Prediction.Result == ClashResult.Draw), Is.True, $"{stage.Id} R2 thiếu Draw");
+                Assert.That(r2.Any(o => o.Prediction.Result == ClashResult.Lose), Is.True, $"{stage.Id} R2 thiếu Lose");
+            }
+        }
+
+        [Test]
+        public void AllFiveStages_CanBeCompletedFromBoardToDuelVictory()
+        {
+            var session = ContentCatalog.CreateSession();
+            foreach (var stage in StageCatalog.All())
+            {
+                session.StartStage(stage.Id);
+                var player = session.State.Units.Player;
+                var boss = session.State.Units.Boss;
+
+                // Tiến lại áp sát boss bằng Temporal Step hoặc Move rồi kéo máu Boss xuống < 70% vào Phase 2 Duel
+                int guard = 0;
+                while (session.State.Turn.Phase != TurnPhase.Duel && !session.State.IsOver && guard++ < 15)
+                {
+                    if (player.Hp < player.MaxHp / 2)
+                    {
+                        player.SetHp(player.MaxHp); // giữ HP để kiểm tra tính khả thi chiến đấu mọi ải không soft-lock
+                    }
+
+                    var stepTargets = new ActionValidator(session.State.Pathfinder)
+                        .GetValidTargets(ActionRequest.Skill(player.Id, "temporal-step", player.Position), session.State);
+                    if (!player.HasActedThisTurn && player.GetCooldown("temporal-step") == 0 && stepTargets.Count > 0)
+                    {
+                        var nearest = stepTargets.OrderBy(c => boss.Footprint.Min(b => GridCoord.Manhattan(c, b))).First();
+                        if (boss.Footprint.Min(b => GridCoord.Manhattan(player.Position, b)) > 1)
+                        {
+                            session.TryExecute(ActionRequest.Skill(player.Id, "temporal-step", nearest));
+                        }
+                    }
+
+                    if (!player.HasMovedThisTurn && boss.Footprint.Min(b => GridCoord.Manhattan(player.Position, b)) > 1)
+                    {
+                        var moveTargets = new ActionValidator(session.State.Pathfinder)
+                            .GetValidTargets(ActionRequest.Move(player.Id, player.Position), session.State);
+                        if (moveTargets.Count > 0)
+                        {
+                            var bestMove = moveTargets.OrderBy(c => boss.Footprint.Min(b => GridCoord.Manhattan(c, b))).First();
+                            session.TryExecute(ActionRequest.Move(player.Id, bestMove));
+                        }
+                    }
+
+                    if (!player.HasActedThisTurn && session.State.Turn.Phase == TurnPhase.Player)
+                    {
+                        var targetCell = boss.Footprint.OrderBy(b => GridCoord.Manhattan(player.Position, b)).First();
+                        var slashRes = session.TryExecute(ActionRequest.Skill(player.Id, "swift-slash", targetCell));
+                        if (!slashRes.Success)
+                        {
+                            session.TryExecute(ActionRequest.Guard(player.Id));
+                        }
+                    }
+
+                    if (session.State.Turn.Phase == TurnPhase.Player && !session.State.IsOver)
+                    {
+                        session.EndTurn();
+                    }
+                }
+
+                Assert.That(session.State.Turn.Phase, Is.EqualTo(TurnPhase.Duel), $"{stage.Id} phải vào được Phase 2 Duel.");
+
+                int duelGuard = 0;
+                while (!session.State.IsOver && duelGuard++ < 15)
+                {
+                    var winOpt = session.State.Duel.GetOptions().First(o => o.Prediction.Result == ClashResult.Win);
+                    Assert.That(session.TryExecute(ActionRequest.ClashSkill(player.Id, winOpt.SkillId)).Success, Is.True);
+                }
+
+                Assert.That(session.State.Result, Is.EqualTo(StageResult.Victory), $"{stage.Id} phải chiến thắng được trong Duel.");
+            }
+        }
+
+        [Test]
+        public void AllStageOutros_AreUniqueAndContainEosphorosArc()
+        {
+            var o1 = DialogueCatalog.GetOutro("stage-1");
+            var o2 = DialogueCatalog.GetOutro("stage-2");
+            var o3 = DialogueCatalog.GetOutro("stage-3");
+            var i4 = DialogueCatalog.GetIntro("stage-4");
+
+            Assert.That(o1.StartId, Is.EqualTo("s1_end_1"));
+            Assert.That(o2.StartId, Is.EqualTo("s2_end_1"));
+            Assert.That(o3.StartId, Is.EqualTo("s3_end_1"));
+            Assert.That(i4.StartId, Is.EqualTo("s4_story_1"));
+            Assert.That(o1.Get(o1.StartId).Speaker, Is.EqualTo(UnitCatalog.EosphorosId));
+            Assert.That(o2.Get(o2.StartId).Speaker, Is.EqualTo(UnitCatalog.EosphorosId));
+            Assert.That(o3.Get(o3.StartId).Speaker, Is.EqualTo(UnitCatalog.EosphorosId));
         }
     }
 }

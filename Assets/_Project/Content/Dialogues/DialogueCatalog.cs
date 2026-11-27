@@ -106,7 +106,11 @@ namespace BTH.Content.Dialogues
                 case "stage-1":
                     return NarratedIntro("s1_story", Oakhaven, "s1_1")
                         .Add(new DialogueNode("s1_1", UnitCatalog.EosphorosId,
-                            "Hãy đứng lên. Thế gian này không ruồng bỏ ngươi chừng nào ngọn lửa trong mắt ngươi còn cháy. Cầm lấy thanh kiếm này. Không phải chỉ những kẻ được thần linh lựa chọn, mới xứng đáng được mang danh anh hùng!", "s1_2"))
+                            "Hãy đứng lên. Thế gian này không ruồng bỏ ngươi chừng nào ngọn lửa trong mắt ngươi còn cháy. Cầm lấy thanh kiếm này. Không phải chỉ những kẻ được thần linh lựa chọn, mới xứng đáng được mang danh anh hùng!", "s1_1b"))
+                        .Add(new DialogueNode("s1_1b", UnitCatalog.WandererId,
+                            "Ngài... thật sự tin một kẻ mang lời nguyền hoại tử như ta? Nếu thanh kiếm này có thể đổi lại một cơ hội sống, ta sẽ bước theo ngài đến tận cùng chiến trường.", "s1_1c"))
+                        .Add(new DialogueNode("s1_1c", UnitCatalog.EosphorosId,
+                            "Đừng nghi ngờ bản thân nữa. Phía trước là tàn tích Oakhaven — hãy bước cùng ta và chứng minh lưỡi kiếm trong tay ngươi!", "s1_2"))
                         .Add(new DialogueNode("s1_2", UnitCatalog.WandererId,
                             "Tàn tích Oakhaven... Đao Phủ Tro Tàn đang chặn đường. Ta phải tận dụng các trụ đá, tránh ô gạch nứt vỡ và mở rương thánh dược!", "s1_3"))
                         .Add(new DialogueNode("s1_3", UnitCatalog.AshenExecutionerId,
@@ -127,7 +131,9 @@ namespace BTH.Content.Dialogues
                             "Những trụ đá obsidian sẽ chắn tia thương xuyên thấu. Bước Nhảy Thời Gian sẽ đưa ta lách vào sườn hở của hắn!"));
 
                 case "stage-4":
-                    return new DialogueGraph("s4_1")
+                    return new DialogueGraph("s4_story_1")
+                        .Add(new DialogueNode("s4_story_1", Narrator,
+                            "Vương tọa Hỏa Ngục rực cháy trước mắt. Qua bao lần chết đi sống lại, kiếm pháp của Kẻ Lang Thang đã chạm ngưỡng hoàn mỹ — còn bước chân Eosphoros phía sau lại ngày một trĩu nặng.", "s4_1"))
                         .Add(new DialogueNode("s4_1", UnitCatalog.DemonKingMalkorId,
                             "Lại là chiếc bóng đi sau Eosphoros! Cự Kiếm Hỏa Ngục và Thiên Thạch Dung Nham của ta sẽ thiêu rụi toàn bộ vương tọa này!", "s4_2"))
                         .Add(new DialogueNode("s4_2", UnitCatalog.WandererId,
@@ -154,6 +160,37 @@ namespace BTH.Content.Dialogues
 
         public static DialogueGraph GetOutro(string stageId)
         {
+            if (stageId == "stage-1")
+            {
+                return new DialogueGraph("s1_end_1")
+                    .Add(new DialogueNode("s1_end_1", UnitCatalog.EosphorosId,
+                        "Nhát kiếm kết liễu gọn ghẽ lắm! Không ngờ một kẻ từng gục ngã giữa tro tàn Oakhaven lại có thể đọc vị rìu của Đao Phủ nhanh đến vậy.", "s1_end_2"))
+                    .Add(new DialogueNode("s1_end_2", UnitCatalog.WandererId,
+                        "Ta chỉ cố sống sót qua từng đòn đánh... Tiến về Hầm Mộ Độc Khí thôi, thưa Dũng Giả."));
+            }
+
+            if (stageId == "stage-2")
+            {
+                return new DialogueGraph("s2_end_1")
+                    .Add(new DialogueNode("s2_end_1", UnitCatalog.EosphorosId,
+                        "Lạ thật... Morbida còn chưa kịp niệm xong độc chú, ngươi đã bước sẵn vào điểm mù sau trụ đá. Như thể ngươi đã thấy trước tương lai vậy.", "s2_end_2"))
+                    .Add(new DialogueNode("s2_end_2", UnitCatalog.WandererId,
+                        "Mọi tuyệt kỹ của lũ quỷ đều có quy luật. Chỉ cần để ý kỹ, ngài cũng sẽ thấy.", "s2_end_3"))
+                    .Add(new DialogueNode("s2_end_3", UnitCatalog.EosphorosId,
+                        "(Ánh mắt Dũng Giả khẽ trầm xuống) Phải... phải rồi. Hãy đi tiếp đến Hành Lang Hư Không."));
+            }
+
+            if (stageId == "stage-3")
+            {
+                return new DialogueGraph("s3_end_1")
+                    .Add(new DialogueNode("s3_end_1", UnitCatalog.EosphorosId,
+                        "Khiên Mắt Quỷ làm ta suýt gãy kiếm, vậy mà ngươi... lại một mình xuyên phá qua kẽ hở của Kỵ Sĩ Hư Không không một vết xước.", "s3_end_2"))
+                    .Add(new DialogueNode("s3_end_2", UnitCatalog.WandererId,
+                        "Vết thương trên vai ngài đang rỉ máu rồi, Eosphoros. Để ta đi trước mở đường vào Vương Tọa Hỏa Ngục.", "s3_end_3"))
+                    .Add(new DialogueNode("s3_end_3", UnitCatalog.EosphorosId,
+                        "Không cần lòng thương hại của một kẻ vô danh! (Gã siết chặt chuôi thánh kiếm, nhìn theo bóng lưng Kẻ Lang Thang)"));
+            }
+
             if (stageId == "stage-4")
             {
                 var graph = new DialogueGraph("s4_story_end_1");
@@ -176,9 +213,7 @@ namespace BTH.Content.Dialogues
                 return graph;
             }
 
-            return new DialogueGraph("outro_1")
-                .Add(new DialogueNode("outro_1", UnitCatalog.WandererId,
-                    "Chỉ huy quỷ dữ trấn ải đã gục ngã sau màn Đấu Kỹ Clash. Con đường tiến sâu hơn vào bóng tối đã mở."));
+            return null;
         }
     }
 }

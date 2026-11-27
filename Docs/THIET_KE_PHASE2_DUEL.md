@@ -175,8 +175,8 @@ Kết thúc: boss chết → Winner = player; player chết → Winner = boss; `
 | Ải | Boss | Background | Chiêu boss (uy lực/hệ) | 3 lựa chọn player | Hiệu ứng thắng |
 |---|---|---|---|---|---|
 | 1 | Đao Phủ Tro Tàn | `bg_oakhaven_ruins` | Tro Tàn Cuồng Nộ (15, Physical) + Bổ Rìu (10, Physical) | Blade Guard, Swift Slash, Necrotic Burst | Stagger boss |
-| 2 | Vu Nữ Morbida | `bg_catacomb_toxic` | Bão Khí Độc (14, Necrotic) + Độc Vũ (9, Necrotic) | Necrotic Ward, Necrotic Burst, Protect | Poison 3 HP/lượt ×2 lên boss |
-| 3 | Kỵ Sĩ Hư Không | `bg_void_arena` | Tia Thương Hư Không (16, Piercing) + Thương Đâm (11, Piercing) | Temporal Step, Swift Slash, Protect | Flanked boss (×1.5) |
+| 2 | Vu Nữ Morbida | `bg_catacomb_toxic` | Bão Khí Độc (14, Necrotic) + Độc Vũ (9, Necrotic) | Necrotic Ward, Necrotic Burst, Blade Guard | Poison 3 HP/lượt ×2 lên boss |
+| 3 | Kỵ Sĩ Hư Không | `bg_void_arena` | Tia Thương Hư Không (16, Piercing) + Thương Đâm (11, Piercing) | Temporal Step, Swift Slash, Blade Guard | Flanked boss (×1.5) |
 | 4 | Quỷ Vương Malkor | `bg_fire_arena` | Cự Kiếm Hỏa Ngục (18, Fire) + Hỏa Cầu (12, Fire) | Temporal Step, Blade Guard, Swift Slash | Stagger boss + 3 đòn kết liễu |
 | 5 | Eosphoros Sa Ngã | `bg_mausoleum` | Thánh Quang Trảm (18, Holy) + Thánh Kích (12, Holy) | Blade Guard, Swift Slash, Necrotic Burst | Stagger boss |
 
