@@ -137,12 +137,8 @@ namespace BTH.Content.Skills
                 clashPower: 14, boardPower: 5, ElementId.Physical, ap: 1, cd: 0, isClash: true,
                 new DirectDamageBehaviour(5));
 
-            var bladeGuard = Make("blade-guard", "Hộ Kiếm (Blade Guard)", SkillTargeting.Self, 0, 0,
+            var bladeGuard = Make("blade-guard", "Blade Guard", SkillTargeting.Self, 0, 0,
                 clashPower: 15, boardPower: 0, ElementId.Physical, ap: 1, cd: 1, isClash: true,
-                new GuardSkillBehaviour());
-
-            var protect = Make("protect", "Khiên Hộ Mệnh (Protect)", SkillTargeting.Self, 0, 0,
-                clashPower: 15, boardPower: 0, ElementId.Holy, ap: 1, cd: 1, isClash: true,
                 new GuardSkillBehaviour());
 
             var necroticBurst = Make("necrotic-burst", "Bùng Nổ Hoại Tử (Necrotic Burst)", SkillTargeting.Cell, 1, 2,
@@ -232,7 +228,7 @@ namespace BTH.Content.Skills
 
             return new List<SkillDefinition>
             {
-                swiftSlash, bladeGuard, protect, necroticBurst, necroticWard, temporalStep, dodge,
+                swiftSlash, bladeGuard, necroticBurst, necroticWard, temporalStep, dodge,
                 ashenFury, axeCleave, earthCrack,
                 plagueStorm, poisonDance, graveHands,
                 voidSpearBeam, spearThrust, eyeShield,

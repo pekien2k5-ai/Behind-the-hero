@@ -1072,8 +1072,7 @@ namespace BTH.Game
                 statusLine = "Hiệu ứng: " + string.Join(", ", names);
             }
             GUI.Label(new Rect(20, 172, 240, 22), statusLine, _labelStyle);
-            GUI.Label(new Rect(20, 192, 240, 20),
-                $"Vòng lặp: {_session.Knowledge.Deaths}  |  Chiêu đã biết: {_session.Knowledge.SeenKeys.Count}", _labelStyle);
+            DrawRunKnowledge(new Rect(20, 192, 240, 20), state.Knowledge);
 
             GUI.Label(new Rect(20, 220, 240, 22), "ACTIONS:", _headerStyle);
             float by = 246f;
@@ -1149,6 +1148,14 @@ namespace BTH.Game
                 GUI.Label(new Rect(20, by, 240, 85),
                     "Current Turn: Wanderer\n• Ô xanh lam: Vùng đi được (A*)\n• Ô đỏ nhấp nháy: Telegraph Boss",
                     _labelStyle);
+            }
+
+            var boss = state.Units.Boss;
+            if (!state.IsOver && boss != null && state.Telegraph.TryGet(boss.Id, out var intent) &&
+                _session.Skills.TryGet(intent.SkillId, out var skill))
+            {
+                string familiarity = state.Knowledge.HasSeenBossSkill(skill.Id) ? "Đã gặp" : "Chiêu mới";
+                GUI.Label(new Rect(20, 650, 240, 44), $"Boss chuẩn bị · {familiarity}\n{skill.DisplayName}", _labelStyle);
             }
         }
 
@@ -1259,8 +1266,7 @@ namespace BTH.Game
             DrawSpriteOnGui(bRect, bFrames[frameIdx % bFrames.Length], flipX: true);
             DrawDuelHealth(new Rect(pRect.x, pRect.yMax, pRect.width, 22), player);
             DrawDuelHealth(new Rect(bRect.x, bRect.yMax, bRect.width, 22), boss);
-            GUI.Label(new Rect(pRect.x, pRect.yMax + 24, pRect.width, 22),
-                $"Vòng lặp: {state.Knowledge.Deaths}", _labelStyle);
+            DrawRunKnowledge(new Rect(pRect.x, pRect.yMax + 24, 260, 22), state.Knowledge);
 
             if (_duelVfxTimer > 0f)
             {
@@ -1291,8 +1297,11 @@ namespace BTH.Game
                 GUIStyle badgeSt = opt.Prediction.Result == ClashResult.Win
                     ? _badgeWinStyle
                     : (opt.Prediction.Result == ClashResult.Draw ? _badgeDrawStyle : _badgeLoseStyle);
+                string winLabel = state.Knowledge.HasWonClash(duel.State.BossSkillId, opt.SkillId)
+                    ? "ĐÃ TỪNG KHẮC CHẾ"
+                    : "DỰ BÁO: THẮNG";
                 string badgeText = opt.Prediction.Result == ClashResult.Win
-                    ? $"DỰ BÁO: THẮNG (+{duel.Definition.FinisherCount} ĐÒN KẾT LIỄU)"
+                    ? $"{winLabel} (+{duel.Definition.FinisherCount} ĐÒN KẾT LIỄU)"
                     : (opt.Prediction.Result == ClashResult.Draw
                         ? "DỰ BÁO: HÒA (MỖI BÊN -10%)"
                         : "DỰ BÁO: THUA (ĂN ĐÒN BOSS)");
@@ -1304,6 +1313,11 @@ namespace BTH.Game
                     _session.TryExecute(ActionRequest.ClashSkill(player.Id, opt.SkillId));
                 }
             }
+        }
+
+        private void DrawRunKnowledge(Rect rect, IRunKnowledge knowledge)
+        {
+            GUI.Label(rect, $"Vòng lặp: {knowledge.Deaths}  |  Chiêu đã biết: {knowledge.KnownBossSkillCount}", _labelStyle);
         }
 
         private void DrawDuelHealth(Rect rect, UnitState unit)

@@ -29,6 +29,7 @@ namespace BTH.Core.Run
         private readonly int _snapshotCapacity;
         private readonly int _seed;
         private readonly Action<UnitState, GridCoord, GameState> _onUnitEnteredCell;
+        private RunKnowledge _knowledge = new RunKnowledge();
         private IRandomSource _random;
         private GameActionExecutor _executor;
 
@@ -90,7 +91,7 @@ namespace BTH.Core.Run
             }
 
             RegisterStage(stage);
-            State = Build(stage);
+            LoadStageState(stage, _knowledge);
         }
 
         /// <summary>Chơi lại màn hiện tại từ đầu: state mới, bộ nhớ run mới (không lưu đĩa).</summary>
@@ -107,7 +108,7 @@ namespace BTH.Core.Run
                 _random = new XorShiftRandom(_seed);
             }
 
-            State = Build(stage);
+            LoadStageState(stage, new RunKnowledge());
         }
 
         /// <summary>Tên hợp đồng trong tài liệu kiến trúc; hành vi giống Restart.</summary>
@@ -190,7 +191,20 @@ namespace BTH.Core.Run
             }
         }
 
-        private GameState Build(StageDefinition stage)
+        private void LoadStageState(StageDefinition stage, RunKnowledge knowledge)
+        {
+            var state = Build(stage, knowledge);
+            if (_knowledge != knowledge)
+            {
+                _knowledge.AttachEventBus(null);
+            }
+
+            _knowledge = knowledge;
+            State = state;
+            _knowledge.AttachEventBus(state.Events);
+        }
+
+        private GameState Build(StageDefinition stage, RunKnowledge knowledge)
         {
             var events = new EventBus();
             var grid = new GridMap(stage.Width, stage.Height, events);
@@ -207,7 +221,7 @@ namespace BTH.Core.Run
             state.Clash = _clash ?? new ClashResolver();
             state.Duel = new ClashDuel(state);
             state.BossPhase = new BossPhaseController(_rules);
-            state.Knowledge = new RunKnowledge(events);
+            state.Knowledge = knowledge;
             state.Turn = new TurnManager(state, _initiative, _objective);
             state.Snapshots = new SnapshotService(state, new SnapshotStore(_snapshotCapacity));
 
@@ -218,9 +232,17 @@ namespace BTH.Core.Run
 
             events.Subscribe<UnitDiedEvent>((in UnitDiedEvent e) =>
             {
-                if (units.TryGet(e.Unit, out var unit) && unit.Faction == UnitFaction.Player)
+                if (State == state && units.TryGet(e.Unit, out var unit) && unit.Faction == UnitFaction.Player)
                 {
                     state.Knowledge.RegisterDeath();
+                }
+            });
+
+            events.Subscribe<SkillUsedEvent>((in SkillUsedEvent e) =>
+            {
+                if (State == state && units.TryGet(e.Unit, out var unit) && unit.IsBoss && _skills.TryGet(e.SkillId, out _))
+                {
+                    knowledge.MarkSeen(RunKnowledge.BossSkillSeenPrefix + e.SkillId);
                 }
             });
 

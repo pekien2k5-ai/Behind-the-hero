@@ -47,7 +47,7 @@ namespace BTH.Game
             ["enemy_hurt"] = "SFX Quái vật hoặc Boss trúng đòn và còn sống",
             ["checkpoint"] = "SFX Xác nhận khi mở rương",
             ["transform_dark"] = "SFX Hiệu ứng ma thuật hắc ám & Tua ngược thời gian (Rewind)",
-            ["transform_light"] = "SFX Hiệu ứng Thánh thuật & Khiên Hộ Mệnh (Guard / Protect)",
+            ["transform_light"] = "SFX Hiệu ứng Thánh thuật & Hộ Kiếm (Guard / Blade Guard)",
             ["dash"] = "SFX Tiếng bước chân lướt qua ô cờ",
             ["ui_confirm"] = "SFX Xác nhận lệnh / Qua lượt / Tiếp tục hội thoại",
             ["ui_select"] = "SFX Chọn ô cờ / Chuyển chế độ lệnh trên HUD"

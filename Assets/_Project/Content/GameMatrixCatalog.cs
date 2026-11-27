@@ -51,7 +51,7 @@ namespace BTH.Content
             {
                 UnitId = UnitCatalog.WandererId, DisplayName = "Kẻ Lang Thang", Role = "Anh hùng (Player)",
                 Hp = 12, Atk = 4, Mov = 2, RangeText = "1 ô",
-                Strengths = "Tua ngược thời gian, kiếm hoàn mỹ, 2 kỹ năng phòng thủ (Protect, Dodge)",
+                Strengths = "Tua ngược thời gian, kiếm hoàn mỹ, 2 kỹ năng phòng thủ (Blade Guard, Dodge)",
                 Weaknesses = "Lượng máu thấp (12 HP), đòi hỏi tính toán 2 AP chính xác"
             },
             new UnitMatrixEntry
@@ -80,7 +80,7 @@ namespace BTH.Content
                 UnitId = UnitCatalog.AshenExecutionerId, DisplayName = "Đao Phủ Tro Tàn", Role = "Boss Ải 1 (Solo)",
                 Hp = 20, Atk = 5, Mov = 1, RangeText = "1-2 ô",
                 Strengths = "Bổ rìu Earth Crack làm nứt sàn đá, Tro Tàn Cuồng Nộ uy lực 15",
-                Weaknesses = "Khắc chế bởi Protect / Blade Guard và Swift Slash -> Stagger"
+                Weaknesses = "Khắc chế bởi Blade Guard và Swift Slash -> Stagger"
             },
             new UnitMatrixEntry
             {
@@ -108,7 +108,7 @@ namespace BTH.Content
                 UnitId = UnitCatalog.FallenEosphorosId, DisplayName = "Eosphoros Sa Ngã", Role = "Boss Cuối Ải 5 (Solo)",
                 Hp = 30, Atk = 6, Mov = 2, RangeText = "1-3 ô",
                 Strengths = "Cột sáng thiên phạt và Thánh Quang Trảm Hoàn Mỹ uy lực 18",
-                Weaknesses = "Khắc chế bởi Swift Slash và Protect / Blade Guard -> Mở 2 Ending A/B"
+                Weaknesses = "Khắc chế bởi Swift Slash và Blade Guard -> Mở 2 Ending A/B"
             }
         };
     }

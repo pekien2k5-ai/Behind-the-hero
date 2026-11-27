@@ -4,7 +4,7 @@ namespace BTH.Core.Run
 {
     /// <summary>
     /// Hiểu biết của người chơi tích luỹ trong run: chiêu boss đã thấy, số lần chết.
-    /// Sống ngoài snapshot nên giữ nguyên khi rewind (đây là "trí nhớ" của người chơi).
+    /// Sống qua các ải trong cùng run và ngoài snapshot.
     /// </summary>
     public interface IRunKnowledge
     {
@@ -13,6 +13,14 @@ namespace BTH.Core.Run
         IReadOnlyDictionary<string, int> Counters { get; }
 
         IReadOnlyCollection<string> SeenKeys { get; }
+
+        int KnownBossSkillCount { get; }
+
+        bool HasSeenBossSkill(string skillId);
+
+        bool HasWonClash(string bossSkillId, string playerSkillId);
+
+        void RecordClashWin(string bossSkillId, string playerSkillId);
 
         bool HasSeen(string key);
 

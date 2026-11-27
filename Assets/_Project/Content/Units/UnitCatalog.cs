@@ -35,7 +35,6 @@ namespace BTH.Content.Units
             {
                 "swift-slash",
                 "blade-guard",
-                "protect",
                 "necrotic-burst",
                 "necrotic-ward",
                 "temporal-step",

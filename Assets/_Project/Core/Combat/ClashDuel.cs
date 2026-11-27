@@ -173,6 +173,7 @@ namespace BTH.Core.Combat
             // Thắng Clash: đánh kết liễu tự động (không cần người chơi bấm Attack).
             if (result == ClashResult.Win)
             {
+                _state.Knowledge?.RecordClashWin(_duel.BossSkillId, skill.Id);
                 damageToBoss = ApplyFinishers();
                 if (applied?.Id == StatusIds.Stagger && _boss.Statuses.Remove(StatusIds.Stagger))
                 {
