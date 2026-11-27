@@ -168,12 +168,17 @@ namespace BTH.Core.Combat
             }
 
             _duel.LastResult = result;
+            _state.Knowledge?.MarkSeen(RunKnowledge.BossSkillSeenPrefix + _duel.BossSkillId);
+            if (result == ClashResult.Win)
+            {
+                _state.Knowledge?.RecordClashWin(_duel.BossSkillId, skill.Id);
+            }
+
             _state.Events.Publish(new ClashResolvedEvent(_boss.Id, skill.Id, result, playerPower, bossPower));
 
             // Thắng Clash: đánh kết liễu tự động (không cần người chơi bấm Attack).
             if (result == ClashResult.Win)
             {
-                _state.Knowledge?.RecordClashWin(_duel.BossSkillId, skill.Id);
                 damageToBoss = ApplyFinishers();
                 if (applied?.Id == StatusIds.Stagger && _boss.Statuses.Remove(StatusIds.Stagger))
                 {
@@ -341,7 +346,6 @@ namespace BTH.Core.Combat
             _duel.BossPower = _definition.BossPower > 0 ? _definition.BossPower : bossSkill.Power;
             _duel.BossElement = bossSkill.Element;
             _duel.AddSeen(bossSkillId);
-            _state.Knowledge?.MarkSeen(RunKnowledge.BossSkillSeenPrefix + bossSkillId);
 
             _state.Events.Publish(new DuelRoundStartedEvent(round, bossSkillId, _duel.BossPower));
         }

@@ -97,6 +97,7 @@ namespace BTH.Game
         private float _transitionTimer;
         private float _enemyBeatTimer;
         private string _lastDuelRoundNotice = string.Empty;
+        private string _lastNewlyRevealedBossSkillId;
         private float _duelVfxTimer;
         private string _activeDuelVfxId = "swift-slash";
         private bool _duelVfxOnBoss = true;
@@ -226,6 +227,7 @@ namespace BTH.Game
         public void EnterMainMenu()
         {
             _isPaused = false;
+            _lastNewlyRevealedBossSkillId = null;
             CloseAllModals();
             _screenState = AppScreenState.MainMenu;
             ApplyAudioOptions();
@@ -239,6 +241,7 @@ namespace BTH.Game
             _isPaused = false;
             CloseAllModals();
             _showDuelHint = false;
+            _lastNewlyRevealedBossSkillId = null;
 
             UnsubscribeAll();
             _session = ContentCatalog.CreateSession();
@@ -251,6 +254,7 @@ namespace BTH.Game
             _isPaused = false;
             CloseAllModals();
             _showDuelHint = false;
+            _lastNewlyRevealedBossSkillId = null;
 
             if (_session.State != null)
             {
@@ -364,6 +368,7 @@ namespace BTH.Game
             _enemyBeatTimer = 0f;
             _duelFinisherHitsShown = 0;
             _lastDuelRoundNotice = string.Empty;
+            _lastNewlyRevealedBossSkillId = null;
             _cmdMode = PlayerCommandMode.Move;
             _combatLog.Clear();
 
@@ -621,6 +626,19 @@ namespace BTH.Game
                 }
             }));
 
+            _eventSubs.Add(ev.Subscribe<RunKnowledgeUpdatedEvent>((in RunKnowledgeUpdatedEvent e) =>
+            {
+                if (e.Key != null && e.Key.StartsWith(RunKnowledge.BossSkillSeenPrefix, StringComparison.Ordinal))
+                {
+                    string skillId = e.Key.Substring(RunKnowledge.BossSkillSeenPrefix.Length);
+                    _lastNewlyRevealedBossSkillId = skillId;
+                    if (_session.Skills.TryGet(skillId, out var revealed))
+                    {
+                        PushCombatLog($"📖 Giải mã chiêu Boss: {revealed.DisplayName} (Hệ {revealed.Element.Value} · Uy lực {revealed.Power})!");
+                    }
+                }
+            }));
+
             _eventSubs.Add(ev.Subscribe<ClashResolvedEvent>((in ClashResolvedEvent e) =>
             {
                 _activeDuelVfxId = e.PlayerSkillId;
@@ -630,13 +648,32 @@ namespace BTH.Game
                     ? Math.Max(1, _session.State.Duel?.Definition?.FinisherCount ?? 1)
                     : 0;
 
+                string bossSkillId = _session.State.Duel?.State?.BossSkillId;
+                string bName = bossSkillId ?? "Chiêu Boss";
+                string bElem = "?";
+                if (!string.IsNullOrEmpty(bossSkillId) && _session.Skills.TryGet(bossSkillId, out var bSkill))
+                {
+                    bName = bSkill.DisplayName;
+                    bElem = bSkill.Element.Value;
+                }
+
+                bool newlyRevealed = !string.IsNullOrEmpty(bossSkillId) &&
+                    string.Equals(_lastNewlyRevealedBossSkillId, bossSkillId, StringComparison.Ordinal);
+                _lastNewlyRevealedBossSkillId = null;
+
                 string outcomeVi = e.Result == ClashResult.Win
                     ? $"THẮNG CLASH ({e.PlayerPower} vs {e.BossPower}) -> {_duelFinisherHitsShown} ĐÒN KẾT LIỄU! (Đã lưu Sổ tay)"
                     : (e.Result == ClashResult.Draw
                         ? $"HÒA CLASH ({e.PlayerPower} vs {e.BossPower}) -> MỖI BÊN MẤT 10% UY LỰC!"
                         : $"THUA CLASH ({e.PlayerPower} vs {e.BossPower}) -> NHẬN ĐÒN TUYỆT KỸ BOSS!");
-                _lastDuelRoundNotice = outcomeVi;
-                _combatBannerText = outcomeVi;
+
+                string notice = newlyRevealed
+                    ? $"✦ GIẢI MÃ CHIÊU MỚI: [{bName}] (Hệ {bElem} · Uy lực {e.BossPower}) — {outcomeVi}"
+                    : $"[{bName}] — {outcomeVi}";
+
+                _lastDuelRoundNotice = notice;
+                _combatBannerText = notice;
+                PushCombatLog(notice);
                 PlaySfx(e.Result == ClashResult.Win ? "attack3" : "boss_attack");
             }));
 
@@ -647,6 +684,7 @@ namespace BTH.Game
                 _duelVfxTimer = 0f;
                 _duelFinisherHitsShown = 0;
                 _lastDuelRoundNotice = string.Empty;
+                _lastNewlyRevealedBossSkillId = null;
                 _showDuelHint = false;
                 RebuildBoardAndUnits();
                 RefreshValidTargets();
@@ -1633,9 +1671,9 @@ namespace BTH.Game
                 GUI.DrawTexture(new Rect(row.x + 10, row.y + 11, 64, 64),
                     ArtCatalog.GetPortrait(bossPortraitId), ScaleMode.ScaleToFit);
 
-                GUI.Label(new Rect(row.x + 86, row.y + 8, 430, 22),
-                    $"ẢI {i + 1}: {st.DisplayName}  ({st.Width}×{st.Height} · {st.TurnLimit} lượt)", _headerStyle);
-                GUI.Label(new Rect(row.x + 86, row.y + 32, 440, 46),
+                GUI.Label(new Rect(row.x + 86, row.y + 7, 448, 24),
+                    $"{st.DisplayName}  ·  {st.TurnLimit} lượt", _headerStyle);
+                GUI.Label(new Rect(row.x + 86, row.y + 32, 448, 48),
                     StageCatalog.GetPuzzleDescription(st.Id), _labelStyle);
 
                 if (GUI.Button(new Rect(row.xMax - 144, row.y + 23, 130, 38), "▶ VÀO ẢI", _centerActiveBtnStyle))
@@ -1714,13 +1752,13 @@ namespace BTH.Game
 
             y = DrawTutorialCard(contentRect.width - 8, y, "2. PHASE 2 — DUEL MODE (ĐẤU CHIÊU ĐỐI KHÁNG 1V1)",
                 "• Khi HP Boss tụt xuống dưới 70%, bàn cờ chuyển sang sàn đấu Duel 1v1.\n" +
-                "• Mỗi vòng Boss ra 1 tuyệt kỹ (theo chu kỳ 2 chiêu). Bạn chọn 1 trong 3 thẻ chiêu Clash để đối đầu.\n" +
-                "• Cảnh báo Thắng/Hòa/Thua mặc định được ẨN để giữ thử thách: hãy quan sát Hệ & Uy lực hoặc bấm nút [💡 GỢI Ý (H)] để hiện dự đoán và khắc chế đã học!\n" +
-                "• THẮNG: Gắn hiệu ứng (Stagger ×2 / Poison / Flanked ×1.5) + tự động tung đòn kết liễu! HÒA: Mỗi bên mất 10% uy lực. THUA: Nhận nguyên Uy lực Boss.", 148f);
+                "• Lần đầu gặp chiêu Boss, Tên/Hệ/Uy lực sẽ ẩn dưới dạng [???]. Hãy tung 1 chiêu Clash để giải mã thông tin & mở khóa vào Sổ tay!\n" +
+                "• Sau khi đã giải mã (đã học), cảnh báo Thắng/Hòa/Thua mặc định vẫn ẨN — tự suy luận hoặc bấm [💡 GỢI Ý (H)] để xem phân tích & khắc chế đã lưu.\n" +
+                "• THẮNG: Gắn hiệu ứng (Stagger ×2 / Poison / Flanked ×1.5) + tự động tung đòn kết liễu! HÒA: Mỗi bên mất 10% uy lực. THUA: Nhận nguyên Uy lực Boss.", 160f);
 
             y = DrawTutorialCard(contentRect.width - 8, y, "3. LỜI NGUYỀN TUA NGƯỢC (REWIND) & SỔ TAY CHIÊU [K]",
                 "• Khi gục ngã hoặc bước nhầm, bấm nút [UNDO / Rewind (R)] để quay về Checkpoint đầu lượt hoặc đầu Duel.\n" +
-                "• Mọi chiêu Boss từng thấy và đòn khắc chế bạn đã thắng Clash được LƯU TRONG SỔ TAY [K] xuyên suốt cả lượt chạy (kể cả qua Rewind và chuyển ải).", 104f);
+                "• Mọi chiêu Boss đã giải mã và đòn khắc chế bạn đã thắng Clash được LƯU TRONG SỔ TAY [K] xuyên suốt cả lượt chạy (kể cả qua Rewind và chuyển ải).", 104f);
 
             DrawTutorialCard(contentRect.width - 8, y, "4. BẢNG PHÍM TẮT NHANH",
                 "• [G] Di chuyển (Move)     ·  [S] Chém thường (Slash)  ·  [D] Hộ Kiếm (Guard -80% DMG)\n" +
@@ -2015,8 +2053,11 @@ namespace BTH.Game
             if (!state.IsOver && boss != null && state.Telegraph.TryGet(boss.Id, out var intent) &&
                 _session.Skills.TryGet(intent.SkillId, out var skill))
             {
-                string familiarity = state.Knowledge.HasSeenBossSkill(skill.Id) ? "Đã gặp" : "Chiêu mới";
-                GUI.Label(new Rect(20, 652, 240, 44), $"Boss chuẩn bị · {familiarity}\n{skill.DisplayName}", _labelStyle);
+                bool known = state.Knowledge.HasSeenBossSkill(skill.Id);
+                string telegraphLabel = known
+                    ? $"Boss chuẩn bị · Đã học\n{skill.DisplayName} (Hệ {skill.Element.Value})"
+                    : "Boss chuẩn bị · Chiêu mới\n??? (Chưa chứng kiến)";
+                GUI.Label(new Rect(20, 652, 240, 44), telegraphLabel, _labelStyle);
             }
         }
 
@@ -2137,14 +2178,19 @@ namespace BTH.Game
             {
                 bossSkillName = bSkill.DisplayName;
             }
-            string familiarityTag = state.Knowledge.HasSeenBossSkill(duel.State.BossSkillId) ? "ĐÃ GẶP" : "CHIÊU MỚI";
+            bool isBossSkillKnown = state.Knowledge.HasSeenBossSkill(duel.State.BossSkillId);
+            string bossHeader = isBossSkillKnown
+                ? $"⚔ PHASE 2: DUEL MODE — VÒNG {duel.State.Round}  |  BOSS: [{bossSkillName.ToUpperInvariant()}] (UY LỰC {duel.State.BossPower} | HỆ {duel.State.BossElement.Value} · ĐÃ HỌC)"
+                : $"⚔ PHASE 2: DUEL MODE — VÒNG {duel.State.Round}  |  BOSS: [ ??? ] (UY LỰC ??? | HỆ ??? · CHƯA GIẢI MÃ)";
+            string defaultSubtitle = isBossSkillKnown
+                ? "Chiêu Boss đã được giải mã! Tự phán đoán khắc chế hoặc bấm [💡 Gợi ý] để xem cảnh báo Thắng/Hòa/Thua."
+                : "Chiêu thức chưa từng gặp! Hãy tung 1 chiêu đối kháng để giải mã thông tin & lưu vào Chiêu đã học.";
 
             GUI.Label(new Rect(bannerRect.x + 14, bannerRect.y + 8, bannerRect.width - 380, 26),
-                $"⚔ PHASE 2: DUEL MODE — VÒNG {duel.State.Round}  |  BOSS: [{bossSkillName.ToUpperInvariant()}] (UY LỰC {duel.State.BossPower} | HỆ {duel.State.BossElement.Value} · {familiarityTag})",
-                _headerStyle);
+                bossHeader, _headerStyle);
             GUI.Label(new Rect(bannerRect.x + 14, bannerRect.y + 38, bannerRect.width - 380, 28),
                 string.IsNullOrEmpty(_lastDuelRoundNotice)
-                    ? "Quan sát Hệ & Uy lực của Boss để chọn 1 trong 3 thẻ Clash — bấm [💡 Gợi ý] nếu cần cảnh báo Thắng/Thua!"
+                    ? defaultSubtitle
                     : _lastDuelRoundNotice,
                 _boldLabelStyle);
 
@@ -2213,20 +2259,27 @@ namespace BTH.Game
             {
                 Rect hintStrip = new Rect(arena.x + 16, arena.yMax - 208f, arena.width - 32, 30f);
                 GUI.Box(hintStrip, GUIContent.none, _subPanelStyle);
-                var learnedCounters = state.Knowledge.GetWonClashPlayerSkills(duel.State.BossSkillId);
                 string counterSummary;
-                if (learnedCounters.Count > 0)
+                if (!isBossSkillKnown)
                 {
-                    var displayNames = new List<string>();
-                    for (int i = 0; i < learnedCounters.Count; i++)
-                    {
-                        displayNames.Add(_session.Skills.TryGet(learnedCounters[i], out var sk) ? sk.DisplayName : learnedCounters[i]);
-                    }
-                    counterSummary = $"★ GỢI Ý & KÝ ỨC ĐÃ HỌC: Đã từng khắc chế [{bossSkillName}] bằng: {string.Join(", ", displayNames)}";
+                    counterSummary = "🔒 CHƯA CÓ KÝ ỨC VỀ CHIÊU NÀY (???): Hãy Clash 1 lần để giải mã Tên/Hệ/Uy lực — sau khi đã học, [💡 Gợi ý] mới mở phân tích Thắng/Thua!";
                 }
                 else
                 {
-                    counterSummary = $"💡 GỢI Ý ĐANG BẬT: Cảnh báo Thắng/Hòa/Thua đã mở · Chưa ghi nhớ khắc chế cho [{bossSkillName}] (Thắng 1 lần để lưu vào Sổ tay!)";
+                    var learnedCounters = state.Knowledge.GetWonClashPlayerSkills(duel.State.BossSkillId);
+                    if (learnedCounters.Count > 0)
+                    {
+                        var displayNames = new List<string>();
+                        for (int i = 0; i < learnedCounters.Count; i++)
+                        {
+                            displayNames.Add(_session.Skills.TryGet(learnedCounters[i], out var sk) ? sk.DisplayName : learnedCounters[i]);
+                        }
+                        counterSummary = $"★ GỢI Ý & KÝ ỨC ĐÃ HỌC: Đã từng khắc chế [{bossSkillName}] bằng: {string.Join(", ", displayNames)}";
+                    }
+                    else
+                    {
+                        counterSummary = $"💡 GỢI Ý ĐANG BẬT: Cảnh báo Thắng/Hòa/Thua đã mở · Chưa ghi nhớ khắc chế cho [{bossSkillName}] (Thắng 1 lần để lưu vào Sổ tay!)";
+                    }
                 }
                 GUI.Label(new Rect(hintStrip.x + 12, hintStrip.y + 4, hintStrip.width - 24, 22), counterSummary, _boldLabelStyle);
             }
@@ -2249,7 +2302,18 @@ namespace BTH.Game
                     ? pSkill.Element.Value
                     : "Physical";
 
-                if (_showDuelHint)
+                if (!isBossSkillKnown)
+                {
+                    GUI.Label(new Rect(card.x + 12, card.y + 36, card.width - 24, 38),
+                        $"Hệ: {skillElement}  |  Uy lực gốc: {basePower}\n(Chiêu Boss chưa giải mã: ??? — Clash 1 lần để mở thông tin)",
+                        _labelStyle);
+
+                    string unknownBadge = _showDuelHint
+                        ? "❓ CHƯA GIẢI MÃ — CLASH 1 LẦN ĐỂ MỞ GỢI Ý"
+                        : "❓ CHIÊU BOSS BÍ ẨN (???) — CLASH ĐỂ GIẢI MÃ";
+                    GUI.Box(new Rect(card.x + 12, card.y + 80, card.width - 24, 28), unknownBadge, _badgeInfoStyle);
+                }
+                else if (_showDuelHint)
                 {
                     string bonusSign = opt.Prediction.Bonus >= 0 ? $"+{opt.Prediction.Bonus}" : opt.Prediction.Bonus.ToString();
                     GUI.Label(new Rect(card.x + 12, card.y + 34, card.width - 24, 42),
@@ -2271,11 +2335,19 @@ namespace BTH.Game
                 else
                 {
                     GUI.Label(new Rect(card.x + 12, card.y + 36, card.width - 24, 38),
-                        $"Hệ: {skillElement}  |  Uy lực gốc: {basePower}\n(Tự phán đoán khắc chế so với chiêu Boss {duel.State.BossPower})",
+                        $"Hệ: {skillElement}  |  Uy lực gốc: {basePower}\n(Chiêu Boss đã học: Uy lực {duel.State.BossPower} | Hệ {duel.State.BossElement.Value})",
                         _labelStyle);
 
-                    GUI.Box(new Rect(card.x + 12, card.y + 80, card.width - 24, 28),
-                        "🔒 ẨN CẢNH BÁO — Bấm [💡 GỢI Ý] để xem", _badgeInfoStyle);
+                    if (state.Knowledge.HasWonClash(duel.State.BossSkillId, opt.SkillId))
+                    {
+                        GUI.Box(new Rect(card.x + 12, card.y + 80, card.width - 24, 28),
+                            "★ KÝ ỨC ĐÃ HỌC: ĐÃ TỪNG KHẮC CHẾ THÀNH CÔNG", _badgeWinStyle);
+                    }
+                    else
+                    {
+                        GUI.Box(new Rect(card.x + 12, card.y + 80, card.width - 24, 28),
+                            "🔒 ẨN DỰ BÁO — Bấm [💡 GỢI Ý] để xem Thắng/Thua", _badgeInfoStyle);
+                    }
                 }
 
                 if (GUI.Button(new Rect(card.x + 12, card.y + 114, card.width - 24, 32),
@@ -2378,27 +2450,56 @@ namespace BTH.Game
             var knowledge = _session?.Knowledge;
             int deaths = knowledge?.Deaths ?? 0;
             var seenBossSkills = knowledge != null ? knowledge.GetSeenBossSkillIds() : Array.Empty<string>();
+
+            var unseenCurrentStageSkills = new List<string>();
+            var unseenSet = new HashSet<string>(StringComparer.Ordinal);
+            var stageDuelSkills = _session?.State?.Stage?.Duel?.BossSkillIds;
+            if (stageDuelSkills != null)
+            {
+                for (int i = 0; i < stageDuelSkills.Count; i++)
+                {
+                    string id = stageDuelSkills[i];
+                    if (!string.IsNullOrEmpty(id) && (knowledge == null || !knowledge.HasSeenBossSkill(id)) && unseenSet.Add(id))
+                    {
+                        unseenCurrentStageSkills.Add(id);
+                    }
+                }
+            }
+            var stageBossSkills = _session?.State?.Units?.Boss?.Definition?.SkillIds;
+            if (stageBossSkills != null)
+            {
+                for (int i = 0; i < stageBossSkills.Count; i++)
+                {
+                    string id = stageBossSkills[i];
+                    if (!string.IsNullOrEmpty(id) && (knowledge == null || !knowledge.HasSeenBossSkill(id)) && unseenSet.Add(id))
+                    {
+                        unseenCurrentStageSkills.Add(id);
+                    }
+                }
+            }
+
             GUI.Label(new Rect(modal.x + 20, modal.y + 44, modal.width - 40, 24),
-                $"Số vòng lặp tử vong: {deaths}   |   Tuyệt kỹ Boss đã chứng kiến: {seenBossSkills.Count}   (Ký ức được giữ khi Rewind & chuyển ải)",
+                $"Số vòng lặp tử vong: {deaths}   |   Tuyệt kỹ Boss đã giải mã: {seenBossSkills.Count}   (Ký ức được giữ khi Rewind & chuyển ải)",
                 _boldLabelStyle);
 
             var wandererSkills = UnitCatalog.CreateWanderer().SkillIds;
-            float bossSectionH = Mathf.Max(66f, seenBossSkills.Count * 66f);
-            float contentH = 44f + bossSectionH + 46f + wandererSkills.Count * 54f + 24f;
+            float seenSectionH = seenBossSkills.Count == 0 ? 66f : seenBossSkills.Count * 66f;
+            float unseenSectionH = unseenCurrentStageSkills.Count * 58f;
+            float contentH = 44f + seenSectionH + unseenSectionH + 46f + wandererSkills.Count * 54f + 24f;
 
             Rect viewRect = new Rect(modal.x + 16, modal.y + 76, modal.width - 32, modal.height - 134);
             Rect contentRect = new Rect(0, 0, viewRect.width - 20, contentH);
             _codexScroll = GUI.BeginScrollView(viewRect, _codexScroll, contentRect);
 
             float y = 6f;
-            GUI.Label(new Rect(4, y, contentRect.width - 8, 24), "1. TUYỆT KỸ BOSS ĐÃ GẶP & KHẮC CHẾ ĐÃ HỌC:", _headerStyle);
+            GUI.Label(new Rect(4, y, contentRect.width - 8, 24), "1. TUYỆT KỸ BOSS ĐÃ GIẢI MÃ & KHẮC CHẾ ĐÃ HỌC:", _headerStyle);
             y += 28f;
 
             if (seenBossSkills.Count == 0)
             {
                 GUI.Box(new Rect(4, y, contentRect.width - 8, 56), GUIContent.none, _subPanelStyle);
                 GUI.Label(new Rect(16, y + 10, contentRect.width - 32, 40),
-                    "Chưa ghi nhận chiêu thức nào của Boss trong lượt chơi này.\nHãy giao chiến trên bàn cờ hoặc bước vào Phase 2 Duel — mọi chiêu Boss tung ra và chiêu thắng Clash sẽ tự động lưu tại đây!",
+                    "Chưa giải mã chiêu thức nào của Boss trong lượt chơi này.\nHãy giao chiến trên bàn cờ hoặc Clash 1 lần trong Phase 2 Duel — chiêu Boss sẽ tự động giải mã & lưu tại đây!",
                     _mutedLabelStyle);
                 y += 66f;
             }
@@ -2437,6 +2538,17 @@ namespace BTH.Game
                         wonCounters.Count > 0 ? _headerStyle : _mutedLabelStyle);
                     y += 66f;
                 }
+            }
+
+            for (int i = 0; i < unseenCurrentStageSkills.Count; i++)
+            {
+                Rect row = new Rect(4, y, contentRect.width - 8, 50);
+                GUI.Box(row, GUIContent.none, _subPanelStyle);
+                GUI.Label(new Rect(row.x + 12, row.y + 6, row.width - 24, 20),
+                    "• ???   [Chưa giải mã — Giao chiến hoặc Clash với Boss ải này để mở khóa thông tin]", _mutedLabelStyle);
+                GUI.Label(new Rect(row.x + 12, row.y + 26, row.width - 24, 18),
+                    "• Hệ: ???  |  Uy lực: ???  |  Khắc chế: Chưa rõ", _mutedLabelStyle);
+                y += 58f;
             }
 
             y += 10f;

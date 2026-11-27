@@ -714,5 +714,30 @@ namespace BTH.Core.Tests
             Assert.That(o2.Get(o2.StartId).Speaker, Is.EqualTo(UnitCatalog.EosphorosId));
             Assert.That(o3.Get(o3.StartId).Speaker, Is.EqualTo(UnitCatalog.EosphorosId));
         }
+
+        [Test]
+        public void Duel_FirstEncounterBossSkill_RemainsHiddenUntilAfterClash()
+        {
+            var session = ContentCatalog.CreateSession();
+            session.StartStage("stage-1");
+            session.EnterDuel();
+
+            var hero = session.State.Units.Player.Id;
+            string bossSkill = session.State.Duel.State.BossSkillId;
+            Assert.That(bossSkill, Is.EqualTo("ashen-fury"));
+            Assert.That(session.Knowledge.HasSeenBossSkill(bossSkill), Is.False,
+                "Gặp chiêu lần đầu phải giữ ẩn (???) cho đến sau khi Clash.");
+
+            ActionResult clash = session.TryExecute(ActionRequest.ClashSkill(hero, "necrotic-burst"));
+            Assert.That(clash.Success, Is.True);
+            Assert.That(session.Knowledge.HasSeenBossSkill(bossSkill), Is.True,
+                "Sau khi Clash (kể cả không thắng) phải mở khóa thông tin chiêu vào Chiêu đã học.");
+            Assert.That(session.Knowledge.HasWonClash(bossSkill, "necrotic-burst"), Is.False);
+
+            session.State.Snapshots.Rewind();
+            Assert.That(session.State.Duel.State.BossSkillId, Is.EqualTo(bossSkill));
+            Assert.That(session.Knowledge.HasSeenBossSkill(bossSkill), Is.True,
+                "Khi Rewind quay lại vòng 1, chiêu đã Clash vẫn phải được ghi nhớ.");
+        }
     }
 }
