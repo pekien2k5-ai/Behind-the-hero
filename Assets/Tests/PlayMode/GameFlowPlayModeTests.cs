@@ -81,11 +81,13 @@ namespace BTH.PlayMode.Tests
             Assert.That(_boot.IsPaused, Is.False);
             Assert.That(Time.timeScale, Is.GreaterThan(0f));
 
-            // Vào Phase 2 Duel: mặc định Hint OFF
+            // Vào Phase 2 Duel: mặc định Hint OFF và chiêu Boss đầu tiên chưa được giải mã (???)
             _boot.Session.EnterDuel();
             yield return null;
             Assert.That(_boot.Session.State.Duel.IsActive, Is.True);
             Assert.That(_boot.ShowDuelHint, Is.False);
+            string bossSkill = _boot.Session.State.Duel.State.BossSkillId;
+            Assert.That(_boot.Session.Knowledge.HasSeenBossSkill(bossSkill), Is.False);
 
             var opts = _boot.Session.State.Duel.GetOptions();
             Assert.That(opts.Any(o => o.SkillId == "protect"), Is.False);
@@ -94,10 +96,10 @@ namespace BTH.PlayMode.Tests
             _boot.ToggleDuelHint();
             Assert.That(_boot.ShowDuelHint, Is.True);
 
-            // Thắng Clash Round 1
+            // Thắng Clash Round 1 -> giải mã chiêu Boss & lưu khắc chế
             var player = _boot.Session.State.Units.Player;
-            string bossSkill = _boot.Session.State.Duel.State.BossSkillId;
             Assert.That(_boot.Session.TryExecute(ActionRequest.ClashSkill(player.Id, "blade-guard")).Success, Is.True);
+            Assert.That(_boot.Session.Knowledge.HasSeenBossSkill(bossSkill), Is.True);
             Assert.That(_boot.Session.Knowledge.HasWonClash(bossSkill, "blade-guard"), Is.True);
 
             // Mở Sổ tay Chiêu đã học
