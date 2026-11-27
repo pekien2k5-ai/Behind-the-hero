@@ -98,7 +98,7 @@ namespace BTH.Core.Units
             HasActedThisTurn = false;
         }
 
-        internal int GetCooldown(string skillId)
+        public int GetCooldown(string skillId)
         {
             return skillId != null && _cooldowns.TryGetValue(skillId, out var turns) ? turns : 0;
         }

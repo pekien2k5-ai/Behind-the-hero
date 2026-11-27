@@ -4,6 +4,7 @@ using BTH.Content;
 using BTH.Content.Dialogues;
 using BTH.Content.Stages;
 using BTH.Content.Terrain;
+using BTH.Content.Units;
 using BTH.Core.Actions;
 using BTH.Core.Combat;
 using BTH.Core.Grid;
@@ -24,14 +25,22 @@ namespace BTH.Game
         Skill3
     }
 
+    public enum AppScreenState
+    {
+        MainMenu,
+        Cutscene,
+        Playing
+    }
+
     /// <summary>
     /// Composition Root & Presentation Controller cho Behind the Hero.
-    /// Kết nối GameSession với bàn cờ Tileset, hoạt ảnh Spritesheet, hiệu ứng VFX và giao diện HUD / Duel.
+    /// Quản lý vòng đời màn hình (Main Menu, Lore, Tutorial, Credits, Cutscene hoạt ảnh, Bàn cờ Phase 1, Duel Phase 2, Pause, Cài đặt, Chiêu đã học).
     /// </summary>
     public sealed class GameBootstrap : MonoBehaviour
     {
         private const float UiW = 1280f;
         private const float UiH = 720f;
+        private const float TransitionDuration = 1.35f;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoBoot()
@@ -46,6 +55,7 @@ namespace BTH.Game
         private GameSession _session;
         private IActionValidator _validator;
         private VfxPopupManager _vfxManager;
+        private readonly CutsceneController _cutscene = new CutsceneController();
 
         private Transform _boardRoot;
         private Transform _unitRoot;
@@ -57,59 +67,104 @@ namespace BTH.Game
         private HlinhBgmPlayer _bgm;
         private AudioSource _sfxSource;
 
+        private AppScreenState _screenState = AppScreenState.MainMenu;
+        private bool _hasActiveRun;
+        private bool _isPaused;
+        private bool _showStageSelectModal;
+        private bool _showLearnedSkillsModal;
+        private bool _showSettingsModal;
+        private bool _showLoreModal;
+        private bool _showTutorialModal;
+        private bool _showCreditsModal;
+        private bool _showDuelHint;
+        private Vector2 _codexScroll;
+        private Vector2 _loreScroll;
+        private Vector2 _tutorialScroll;
+        private float _menuAnimTime;
+
         private string _currentStageId = "stage-1";
         private PlayerCommandMode _cmdMode = PlayerCommandMode.Move;
         private GridCoord _hoverCoord = GridCoord.None;
         private readonly HashSet<GridCoord> _validTargetCells = new HashSet<GridCoord>();
         private readonly HashSet<GridCoord> _previewPathCells = new HashSet<GridCoord>();
+        private readonly HashSet<GridCoord> _aoePreviewCells = new HashSet<GridCoord>();
+        private readonly List<string> _combatLog = new List<string>();
         private readonly GameOptionsModel _options = new GameOptionsModel();
-        private bool _showSettingsModal;
 
         private DialogueRunner _dialogueRunner;
         private bool _outroShownForStage;
         private string _combatBannerText = "Lượt của Kẻ Lang Thang — Chọn ô để Di chuyển hoặc Tấn công.";
         private float _transitionTimer;
+        private float _enemyBeatTimer;
         private string _lastDuelRoundNotice = string.Empty;
         private float _duelVfxTimer;
         private string _activeDuelVfxId = "swift-slash";
         private bool _duelVfxOnBoss = true;
+        private int _duelFinisherHitsShown;
 
         private Camera _mainCam;
         private Vector3 _camBasePos = new Vector3(0f, 0f, -10f);
         private float _shakeTimer;
         private float _shakeStrength;
 
-        // Styles cache
+        // Cached GUIStyles (0 allocation trong OnGUI)
         private GUIStyle _panelStyle;
+        private GUIStyle _subPanelStyle;
         private GUIStyle _headerStyle;
         private GUIStyle _labelStyle;
+        private GUIStyle _mutedLabelStyle;
         private GUIStyle _boldLabelStyle;
+        private GUIStyle _centerBoldStyle;
+        private GUIStyle _dialogueTextStyle;
+        private GUIStyle _titleStyle;
+        private GUIStyle _subtitleStyle;
+        private GUIStyle _phase2BannerStyle;
+        private GUIStyle _popupStyle;
         private GUIStyle _btnStyle;
         private GUIStyle _activeBtnStyle;
+        private GUIStyle _centerBtnStyle;
+        private GUIStyle _centerActiveBtnStyle;
         private GUIStyle _badgeWinStyle;
         private GUIStyle _badgeDrawStyle;
         private GUIStyle _badgeLoseStyle;
+        private GUIStyle _badgeInfoStyle;
+        private GUIStyle _smallBadgeStyle;
         private bool _stylesInitialized;
 
         private static readonly string[] PlayerActiveSkills = { "swift-slash", "necrotic-burst", "temporal-step" };
+        private static readonly string[] StageIds = { "stage-1", "stage-2", "stage-3", "stage-4", "stage-5" };
 
         public GameSession Session => _session;
         public string CurrentStageId => _currentStageId;
         public DialogueRunner ActiveDialogue => _dialogueRunner;
+        public CutsceneController Cutscene => _cutscene;
+        public AppScreenState ScreenState => _screenState;
+        public bool HasActiveRun => _hasActiveRun;
+        public bool IsPaused => _isPaused;
+        public bool ShowDuelHint => _showDuelHint;
+        public bool ShowLearnedSkillsModal => _showLearnedSkillsModal;
+        public bool ShowSettingsModal => _showSettingsModal;
+        public bool ShowStageSelectModal => _showStageSelectModal;
+        public bool ShowLoreModal => _showLoreModal;
+        public bool ShowTutorialModal => _showTutorialModal;
+        public bool ShowCreditsModal => _showCreditsModal;
+        public IReadOnlyList<string> CombatLog => _combatLog;
+        public IReadOnlyCollection<GridCoord> AoePreviewCells => _aoePreviewCells;
 
         private void Awake()
         {
             _options.LoadFromPrefs();
+            _options.ApplyDisplaySettings();
             SetupCameraAndAudio();
             ApplyAudioOptions();
             _vfxManager = gameObject.AddComponent<VfxPopupManager>();
             _session = ContentCatalog.CreateSession();
-            LoadStage("stage-1");
+            EnterMainMenu();
         }
 
         private void ApplyAudioOptions()
         {
-            Time.timeScale = Mathf.Clamp(_options.AnimationSpeed, 0.5f, 2.5f);
+            Time.timeScale = _isPaused ? 0f : Mathf.Clamp(_options.AnimationSpeed, 0.5f, 2.5f);
             _bgm?.SetVolume(_options.MasterVolume * _options.BgmVolume);
             if (_sfxSource != null) _sfxSource.volume = _options.MasterVolume * _options.SfxVolume;
         }
@@ -148,12 +203,169 @@ namespace BTH.Game
             }
         }
 
-        public void LoadStage(string stageId)
+        private void PushCombatLog(string entry)
+        {
+            if (string.IsNullOrWhiteSpace(entry)) return;
+            _combatLog.Add(entry);
+            if (_combatLog.Count > 3)
+            {
+                _combatLog.RemoveAt(0);
+            }
+        }
+
+        private void CloseAllModals()
+        {
+            _showSettingsModal = false;
+            _showLearnedSkillsModal = false;
+            _showStageSelectModal = false;
+            _showLoreModal = false;
+            _showTutorialModal = false;
+            _showCreditsModal = false;
+        }
+
+        public void EnterMainMenu()
+        {
+            _isPaused = false;
+            CloseAllModals();
+            _screenState = AppScreenState.MainMenu;
+            ApplyAudioOptions();
+            SetBoardVisibility(false);
+            PlayBgm(AudioCatalog.StoryTheme);
+        }
+
+        public void StartNewGame()
+        {
+            PlaySfx("ui_confirm");
+            _isPaused = false;
+            CloseAllModals();
+            _showDuelHint = false;
+
+            UnsubscribeAll();
+            _session = ContentCatalog.CreateSession();
+            LoadStage("stage-1", playIntro: true);
+        }
+
+        public void ResetRun()
+        {
+            PlaySfx("transform_dark");
+            _isPaused = false;
+            CloseAllModals();
+            _showDuelHint = false;
+
+            if (_session.State != null)
+            {
+                _session.Restart();
+            }
+            LoadStage("stage-1", playIntro: true);
+        }
+
+        public void ResumeActiveRunFromMenu()
+        {
+            if (!_hasActiveRun || _session?.State == null)
+            {
+                StartNewGame();
+                return;
+            }
+            PlaySfx("ui_confirm");
+            _isPaused = false;
+            CloseAllModals();
+            _screenState = (_dialogueRunner != null && !_dialogueRunner.IsFinished)
+                ? AppScreenState.Cutscene
+                : AppScreenState.Playing;
+            ApplyAudioOptions();
+            UpdateBoardVisibility();
+            if (_screenState == AppScreenState.Playing && _session.State.Duel.IsActive)
+            {
+                PlayBgm(_session.State.Stage.Duel?.MusicId ?? AudioCatalog.DuelTheme);
+            }
+        }
+
+        public void SelectStageFromMenu(string stageId)
+        {
+            PlaySfx("ui_confirm");
+            _isPaused = false;
+            CloseAllModals();
+            LoadStage(stageId, playIntro: true);
+        }
+
+        public void TogglePause()
+        {
+            if (_screenState == AppScreenState.MainMenu) return;
+            _isPaused = !_isPaused;
+            if (!_isPaused)
+            {
+                CloseAllModals();
+            }
+            ApplyAudioOptions();
+            PlaySfx("ui_select");
+        }
+
+        public void SetPaused(bool paused)
+        {
+            if (_screenState == AppScreenState.MainMenu) return;
+            _isPaused = paused;
+            if (!_isPaused)
+            {
+                CloseAllModals();
+            }
+            ApplyAudioOptions();
+        }
+
+        public void ToggleDuelHint()
+        {
+            _showDuelHint = !_showDuelHint;
+            PlaySfx("ui_select");
+        }
+
+        public void ToggleLearnedSkillsModal()
+        {
+            bool next = !_showLearnedSkillsModal;
+            CloseAllModals();
+            _showLearnedSkillsModal = next;
+            _codexScroll = Vector2.zero;
+            PlaySfx("ui_select");
+        }
+
+        public void ToggleLoreModal()
+        {
+            bool next = !_showLoreModal;
+            CloseAllModals();
+            _showLoreModal = next;
+            _loreScroll = Vector2.zero;
+            PlaySfx("ui_select");
+        }
+
+        public void ToggleTutorialModal()
+        {
+            bool next = !_showTutorialModal;
+            CloseAllModals();
+            _showTutorialModal = next;
+            _tutorialScroll = Vector2.zero;
+            PlaySfx("ui_select");
+        }
+
+        public void ToggleCreditsModal()
+        {
+            bool next = !_showCreditsModal;
+            CloseAllModals();
+            _showCreditsModal = next;
+            PlaySfx("ui_select");
+        }
+
+        public void LoadStage(string stageId, bool playIntro = true)
         {
             _currentStageId = stageId;
+            _hasActiveRun = true;
+            _isPaused = false;
+            _showDuelHint = false;
+            CloseAllModals();
             _outroShownForStage = false;
             _transitionTimer = 0f;
+            _enemyBeatTimer = 0f;
+            _duelFinisherHitsShown = 0;
             _lastDuelRoundNotice = string.Empty;
+            _cmdMode = PlayerCommandMode.Move;
+            _combatLog.Clear();
 
             UnsubscribeAll();
             _session.StartStage(stageId);
@@ -163,34 +375,95 @@ namespace BTH.Game
             RebuildBoardAndUnits();
             RefreshValidTargets();
             UpdateTileOverlays();
+            ApplyAudioOptions();
 
-            var introGraph = DialogueCatalog.GetIntro(stageId);
+            var introGraph = playIntro ? DialogueCatalog.GetIntro(stageId) : null;
             if (introGraph != null)
             {
-                _dialogueRunner = new DialogueRunner(introGraph, _session.Knowledge);
-                _dialogueRunner.Start();
+                StartCutscene(introGraph, isOutro: false);
             }
             else
             {
                 _dialogueRunner = null;
+                _screenState = AppScreenState.Playing;
+                UpdateBoardVisibility();
             }
 
             PlayBgm(AudioCatalog.StoryTheme);
             _combatBannerText = "Bắt đầu " + _session.State.Stage.DisplayName + " — Quan sát ô đỏ Telegraph của Boss!";
+            PushCombatLog("► Khởi đầu " + _session.State.Stage.DisplayName);
         }
 
-        public void DismissAllDialogue()
+        private void StartCutscene(DialogueGraph graph, bool isOutro)
         {
+            _dialogueRunner = new DialogueRunner(graph, _session.Knowledge);
+            _dialogueRunner.Start();
+            _cutscene.Begin(_currentStageId, isOutro, _dialogueRunner.Current, PlaySfx, TriggerCameraShake);
+            _screenState = AppScreenState.Cutscene;
+            SetBoardVisibility(false);
+        }
+
+        public void AdvanceOrCompleteCutscene()
+        {
+            if (_dialogueRunner == null || _dialogueRunner.IsFinished) return;
+            if (_dialogueRunner.Current.Choices.Count > 0) return;
+
+            if (!_cutscene.IsLineComplete)
+            {
+                _cutscene.CompleteCurrentLine(_dialogueRunner.Current);
+                PlaySfx("ui_select");
+                return;
+            }
+
+            _dialogueRunner.Advance();
+            PlaySfx("ui_confirm");
+            CheckDialogueFinished();
+        }
+
+        public void ChooseCutsceneOption(int choiceIndex)
+        {
+            if (_dialogueRunner == null || _dialogueRunner.IsFinished) return;
+            if (choiceIndex < 0 || choiceIndex >= _dialogueRunner.Current.Choices.Count) return;
+
+            _dialogueRunner.Choose(choiceIndex);
+            PlaySfx("ui_confirm");
+            CheckDialogueFinished();
+        }
+
+        public void SkipCutscene()
+        {
+            if (_dialogueRunner == null || _dialogueRunner.IsFinished) return;
             int safety = 0;
-            while (_dialogueRunner != null && !_dialogueRunner.IsFinished && safety++ < 20)
+            while (_dialogueRunner != null && !_dialogueRunner.IsFinished && safety++ < 40)
             {
                 if (_dialogueRunner.Current.Choices.Count > 0)
                 {
+                    _cutscene.CompleteCurrentLine(_dialogueRunner.Current);
                     break;
                 }
                 _dialogueRunner.Advance();
             }
+            PlaySfx("ui_confirm");
             CheckDialogueFinished();
+        }
+
+        public void DismissAllDialogue()
+        {
+            SkipCutscene();
+        }
+
+        private void SetBoardVisibility(bool visible)
+        {
+            if (_boardRoot != null) _boardRoot.gameObject.SetActive(visible);
+            if (_unitRoot != null) _unitRoot.gameObject.SetActive(visible);
+        }
+
+        private void UpdateBoardVisibility()
+        {
+            bool showBoard = _screenState == AppScreenState.Playing
+                             && _session?.State != null
+                             && !_session.State.Duel.IsActive;
+            SetBoardVisibility(showBoard);
         }
 
         private void UnsubscribeAll()
@@ -213,6 +486,10 @@ namespace BTH.Game
                 {
                     anim.MoveToWorld(CoordToWorldForUnit(u));
                     PlaySfx("dash");
+                    if (u.Faction == UnitFaction.Player)
+                    {
+                        PushCombatLog($"• Kẻ Lang Thang tiến tới ({e.To.X},{e.To.Y}).");
+                    }
                 }
             }));
 
@@ -220,9 +497,10 @@ namespace BTH.Game
             {
                 Vector3 position = CoordToWorld(e.Coord);
                 _vfxManager.SpawnSkillVfx("divine-barrier", position, 1.4f);
-                string text = e.HpRestored > 0 ? $"RƯƠNG KHO BÁU: +{e.HpRestored} HP!" : "ĐÃ MỞ RƯƠNG KHO BÁU!";
+                string text = e.HpRestored > 0 ? $"RƯƠNG: +{e.HpRestored} HP!" : "MỞ RƯƠNG!";
                 _vfxManager.SpawnPopup(position, text, new Color(0.35f, 1f, 0.55f), 1.5f);
                 PlaySfx("checkpoint");
+                PushCombatLog($"★ Mở rương tại ({e.Coord.X},{e.Coord.Y}): hồi +{e.HpRestored} HP.");
             }));
 
             _eventSubs.Add(ev.Subscribe<UnitActedEvent>((in UnitActedEvent e) =>
@@ -241,6 +519,7 @@ namespace BTH.Game
                         _vfxManager.SpawnSkillVfx("blade-guard", anim.transform.position, 1.3f);
                         _vfxManager.SpawnPopup(anim.transform.position, "GUARD (-80% DMG)", new Color(0.4f, 0.85f, 1f));
                         PlaySfx("transform_light");
+                        PushCombatLog("• Kẻ Lang Thang dựng Guard (-80% sát thương 1 lượt).");
                     }
                 }
             }));
@@ -254,9 +533,11 @@ namespace BTH.Game
                     anim.TriggerAttack(pos);
                 }
                 _vfxManager.SpawnSkillVfx(e.SkillId, pos, 1.55f);
+                string actorName = _session.State.Units.TryGet(e.Unit, out var u) ? u.Definition.DisplayName : "Unit";
                 if (_session.Skills.TryGet(e.SkillId, out var sk))
                 {
-                    _combatBannerText = $"Thi triển [{sk.DisplayName}]!";
+                    _combatBannerText = $"{actorName} thi triển [{sk.DisplayName}]!";
+                    PushCombatLog($"• {actorName}: [{sk.DisplayName}].");
                 }
                 PlaySfx(e.Unit == _session.State.Units.Player?.Id ? "attack2" : "boss_attack");
             }));
@@ -270,15 +551,16 @@ namespace BTH.Game
                     targetAnim.TriggerHitFlash();
                 }
                 string tag = e.WasStaggered ? " (STAGGER ×2!)" : (e.WasFlanked ? " (FLANK ×1.5!)" : (e.WasGuarded ? " (GUARD)" : ""));
-                Color col = e.Target == _session.State.Units.Player?.Id
-                    ? new Color(1f, 0.32f, 0.32f)
-                    : new Color(1f, 0.86f, 0.25f);
+                bool isPlayerTarget = e.Target == _session.State.Units.Player?.Id;
+                Color col = isPlayerTarget ? new Color(1f, 0.32f, 0.32f) : new Color(1f, 0.86f, 0.25f);
                 _vfxManager.SpawnPopup(pos, $"-{e.Amount} HP{tag}", col);
                 TriggerCameraShake(0.14f, 0.18f);
                 if (e.Amount > 0 && !e.Killed)
                 {
-                    PlaySfx(e.Target == _session.State.Units.Player?.Id ? "player_hurt" : "enemy_hurt");
+                    PlaySfx(isPlayerTarget ? "player_hurt" : "enemy_hurt");
                 }
+                string tName = _session.State.Units.TryGet(e.Target, out var tu) ? tu.Definition.DisplayName : "Mục tiêu";
+                PushCombatLog($"  ↳ {tName} nhận -{e.Amount} HP{tag}.");
             }));
 
             _eventSubs.Add(ev.Subscribe<StatusAppliedEvent>((in StatusAppliedEvent e) =>
@@ -312,24 +594,30 @@ namespace BTH.Game
                 _vfxManager.SpawnSkillVfx("earth-crack", w, 1.3f);
                 _vfxManager.SpawnPopup(w, "SẬP SÀN -> VỰC THẲM!", new Color(1f, 0.55f, 0.2f));
                 TriggerCameraShake(0.2f, 0.25f);
+                PushCombatLog($"! Ô ({e.Coord.X},{e.Coord.Y}) sập thành Vực thẳm.");
             }));
 
             _eventSubs.Add(ev.Subscribe<HazardTriggeredEvent>((in HazardTriggeredEvent e) =>
             {
                 Vector3 w = CoordToWorld(e.Coord);
                 _vfxManager.SpawnPopup(w, $"BẪY ĐỊA HÌNH -{e.Damage} HP", new Color(0.45f, 1f, 0.45f));
+                PushCombatLog($"! Bẫy địa hình tại ({e.Coord.X},{e.Coord.Y}) gây -{e.Damage} HP.");
             }));
 
             _eventSubs.Add(ev.Subscribe<BossPhaseChangedEvent>((in BossPhaseChangedEvent e) =>
             {
                 if (e.Phase == 2)
                 {
-                    _transitionTimer = 1.25f;
-                    TriggerCameraShake(0.35f, 0.6f);
+                    _showDuelHint = false;
+                    _enemyBeatTimer = 0f;
+                    _duelFinisherHitsShown = 0;
+                    _transitionTimer = TransitionDuration;
+                    TriggerCameraShake(0.38f, 0.65f);
                     PlaySfx("boss_roar");
                     PlaySfx("transform_dark");
                     PlayBgm(_session.State.Stage.Duel?.MusicId ?? AudioCatalog.DuelTheme);
                     _combatBannerText = "BOSS DƯỚI 70% HP — CHUYỂN CẢNH PHASE 2: DUEL MODE!";
+                    PushCombatLog("★ Boss xuống dưới 70% HP → Chuyển Phase 2: Duel Mode!");
                 }
             }));
 
@@ -337,10 +625,13 @@ namespace BTH.Game
             {
                 _activeDuelVfxId = e.PlayerSkillId;
                 _duelVfxOnBoss = e.Result != ClashResult.Lose;
-                _duelVfxTimer = 0.65f;
+                _duelVfxTimer = 0.70f;
+                _duelFinisherHitsShown = e.Result == ClashResult.Win
+                    ? Math.Max(1, _session.State.Duel?.Definition?.FinisherCount ?? 1)
+                    : 0;
 
                 string outcomeVi = e.Result == ClashResult.Win
-                    ? $"THẮNG CLASH ({e.PlayerPower} vs {e.BossPower}) -> KẾT LIỄU TỰ ĐỘNG!"
+                    ? $"THẮNG CLASH ({e.PlayerPower} vs {e.BossPower}) -> {_duelFinisherHitsShown} ĐÒN KẾT LIỄU! (Đã lưu Sổ tay)"
                     : (e.Result == ClashResult.Draw
                         ? $"HÒA CLASH ({e.PlayerPower} vs {e.BossPower}) -> MỖI BÊN MẤT 10% UY LỰC!"
                         : $"THUA CLASH ({e.PlayerPower} vs {e.BossPower}) -> NHẬN ĐÒN TUYỆT KỸ BOSS!");
@@ -352,20 +643,29 @@ namespace BTH.Game
             _eventSubs.Add(ev.Subscribe<RewindPerformedEvent>((in RewindPerformedEvent e) =>
             {
                 _transitionTimer = 0f;
+                _enemyBeatTimer = 0f;
                 _duelVfxTimer = 0f;
+                _duelFinisherHitsShown = 0;
                 _lastDuelRoundNotice = string.Empty;
+                _showDuelHint = false;
                 RebuildBoardAndUnits();
                 RefreshValidTargets();
+                UpdateBoardVisibility();
+
                 var player = _session.State.Units.Player;
                 if (player != null)
                 {
                     _vfxManager.SpawnSkillVfx("rewind", CoordToWorldForUnit(player), 1.8f);
                 }
+
                 bool inDuel = _session.State.Turn.Phase == TurnPhase.Duel;
-                PlayBgm(inDuel ? "boss_theme" : "forest_theme");
+                PlayBgm(inDuel
+                    ? (_session.State.Stage.Duel?.MusicId ?? AudioCatalog.DuelTheme)
+                    : AudioCatalog.StoryTheme);
                 PlaySfx("transform_dark");
                 string checkpoint = inDuel ? "ĐẦU DUEL" : $"LƯỢT {e.TurnIndex}";
                 _combatBannerText = $"ĐÃ TUA NGƯỢC THỜI GIAN VỀ {checkpoint}! Ký ức chiêu Boss vẫn được giữ.";
+                PushCombatLog($"↺ Rewind về {checkpoint} (Ký ức chiêu được bảo toàn).");
             }));
 
             _eventSubs.Add(ev.Subscribe<CameraShakeHintEvent>((in CameraShakeHintEvent e) =>
@@ -381,8 +681,7 @@ namespace BTH.Game
                     var outro = DialogueCatalog.GetOutro(_currentStageId);
                     if (outro != null)
                     {
-                        _dialogueRunner = new DialogueRunner(outro, _session.Knowledge);
-                        _dialogueRunner.Start();
+                        StartCutscene(outro, isOutro: true);
                         PlayBgm(AudioCatalog.StoryTheme);
                     }
                 }
@@ -494,6 +793,7 @@ namespace BTH.Game
         {
             _validTargetCells.Clear();
             _previewPathCells.Clear();
+            _aoePreviewCells.Clear();
             var state = _session?.State;
             var player = state?.Units?.Player;
             if (state == null || player == null || !player.IsAlive || state.Turn.Phase != TurnPhase.Player)
@@ -531,14 +831,56 @@ namespace BTH.Game
             }
         }
 
+        private void RefreshHoverPreviews()
+        {
+            _previewPathCells.Clear();
+            _aoePreviewCells.Clear();
+            var state = _session?.State;
+            if (state == null || !_hoverCoord.IsValid || !state.Grid.InBounds(_hoverCoord))
+            {
+                return;
+            }
+
+            if (_cmdMode == PlayerCommandMode.Move && _validTargetCells.Contains(_hoverCoord))
+            {
+                var path = TacticalNavigator.PreviewPlayerPath(state, _hoverCoord);
+                for (int i = 0; i < path.Count; i++)
+                {
+                    _previewPathCells.Add(path[i]);
+                }
+            }
+            else if (_cmdMode == PlayerCommandMode.Skill2 && _validTargetCells.Contains(_hoverCoord))
+            {
+                var cross = GridShapes.Cross(_hoverCoord, 1);
+                for (int i = 0; i < cross.Count; i++)
+                {
+                    if (state.Grid.InBounds(cross[i]))
+                    {
+                        _aoePreviewCells.Add(cross[i]);
+                    }
+                }
+            }
+        }
+
         private void Update()
         {
-            _bgm?.Tick(Time.unscaledDeltaTime);
+            float udt = Time.unscaledDeltaTime;
+            _bgm?.Tick(udt);
+            _menuAnimTime += udt;
+
+            HandleGlobalEscapeShortcut();
+
+            if (_screenState == AppScreenState.MainMenu)
+            {
+                SetBoardVisibility(false);
+                return;
+            }
+
             if (_session?.State == null) return;
 
-            if (_shakeTimer > 0f)
+            if (_shakeTimer > 0f && !_isPaused)
             {
-                _shakeTimer -= Time.deltaTime;
+                _shakeTimer -= udt;
                 Vector2 offset = UnityEngine.Random.insideUnitCircle * _shakeStrength;
                 _mainCam.transform.position = _camBasePos + new Vector3(offset.x, offset.y, 0f);
                 if (_shakeTimer <= 0f)
@@ -548,55 +890,122 @@ namespace BTH.Game
                 }
             }
 
+            if (_screenState == AppScreenState.Cutscene)
+            {
+                SetBoardVisibility(false);
+                if (!_isPaused && _dialogueRunner != null && !_dialogueRunner.IsFinished)
+                {
+                    _cutscene.Tick(udt, _dialogueRunner.Current, PlaySfx, TriggerCameraShake);
+                    HandleCutsceneShortcuts();
+                }
+                return;
+            }
+
+            if (_isPaused)
+            {
+                return;
+            }
+
             if (_transitionTimer > 0f)
             {
-                _transitionTimer -= Time.unscaledDeltaTime;
+                _transitionTimer = Mathf.Max(0f, _transitionTimer - udt);
+            }
+
+            if (_enemyBeatTimer > 0f)
+            {
+                _enemyBeatTimer = Mathf.Max(0f, _enemyBeatTimer - udt);
             }
 
             if (_duelVfxTimer > 0f)
             {
-                _duelVfxTimer -= Time.deltaTime;
+                _duelVfxTimer = Mathf.Max(0f, _duelVfxTimer - Time.deltaTime);
             }
 
-            bool inDuel = _session.State.Duel.IsActive;
-            if (_boardRoot != null) _boardRoot.gameObject.SetActive(!inDuel);
-            if (_unitRoot != null) _unitRoot.gameObject.SetActive(!inDuel);
+            UpdateBoardVisibility();
 
             if (_transitionTimer > 0f) return;
 
-            HandleKeyboardShortcuts();
+            bool modalOpen = _showSettingsModal || _showLearnedSkillsModal || _showLoreModal ||
+                             _showTutorialModal || _showCreditsModal || _session.State.IsOver;
+            HandleGameplayShortcuts(modalOpen);
+
+            bool inDuel = _session.State.Duel.IsActive;
             if (!inDuel)
             {
-                if (_dialogueRunner == null && !_showSettingsModal)
+                if (!modalOpen)
                 {
                     UpdateBoardHoverAndClick();
+                }
+                else
+                {
+                    _hoverCoord = GridCoord.None;
+                    _previewPathCells.Clear();
+                    _aoePreviewCells.Clear();
                 }
                 UpdateTileOverlays();
             }
         }
 
-        private void HandleKeyboardShortcuts()
+        private void HandleGlobalEscapeShortcut()
         {
             var kb = Keyboard.current;
-            if (kb == null) return;
+            if (kb == null || !kb.escapeKey.wasPressedThisFrame) return;
+
+            if (_showSettingsModal)
+            {
+                _options.SaveToPrefs();
+                _showSettingsModal = false;
+                PlaySfx("ui_select");
+                return;
+            }
+
+            if (_showLearnedSkillsModal || _showStageSelectModal || _showLoreModal || _showTutorialModal || _showCreditsModal)
+            {
+                CloseAllModals();
+                PlaySfx("ui_select");
+                return;
+            }
+
+            if (_screenState != AppScreenState.MainMenu)
+            {
+                TogglePause();
+            }
+        }
+
+        private void HandleCutsceneShortcuts()
+        {
+            var kb = Keyboard.current;
+            if (kb == null || _showSettingsModal || _showLearnedSkillsModal) return;
 
             if (_dialogueRunner != null && !_dialogueRunner.IsFinished)
             {
                 if (kb.spaceKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame)
                 {
-                    if (_dialogueRunner.Current.Choices.Count == 0)
-                    {
-                        _dialogueRunner.Advance();
-                        CheckDialogueFinished();
-                        PlaySfx("ui_confirm");
-                    }
+                    AdvanceOrCompleteCutscene();
                 }
+            }
+        }
+
+        private void HandleGameplayShortcuts(bool modalOpen)
+        {
+            var kb = Keyboard.current;
+            if (kb == null) return;
+
+            if (kb.kKey.wasPressedThisFrame && !_showSettingsModal)
+            {
+                ToggleLearnedSkillsModal();
                 return;
             }
 
+            if (modalOpen) return;
+
             if (_session.State.Turn.Phase == TurnPhase.Duel)
             {
+                if (kb.hKey.wasPressedThisFrame) ToggleDuelHint();
                 if (kb.rKey.wasPressedThisFrame) ExecuteRewind();
+                if (kb.digit1Key.wasPressedThisFrame) TryExecuteDuelOptionByIndex(0);
+                if (kb.digit2Key.wasPressedThisFrame) TryExecuteDuelOptionByIndex(1);
+                if (kb.digit3Key.wasPressedThisFrame) TryExecuteDuelOptionByIndex(2);
                 return;
             }
 
@@ -608,14 +1017,28 @@ namespace BTH.Game
             if (kb.digit3Key.wasPressedThisFrame) SetCommandMode(PlayerCommandMode.Skill3);
             if (kb.dKey.wasPressedThisFrame) ExecuteGuard();
             if (kb.rKey.wasPressedThisFrame) ExecuteRewind();
-            if (kb.xKey.wasPressedThisFrame) LoadStage(_currentStageId);
+            if (kb.xKey.wasPressedThisFrame) LoadStage(_currentStageId, playIntro: false);
             if (kb.spaceKey.wasPressedThisFrame) ExecuteEndTurn();
+        }
+
+        private void TryExecuteDuelOptionByIndex(int index)
+        {
+            var duel = _session?.State?.Duel;
+            var player = _session?.State?.Units?.Player;
+            if (duel == null || !duel.IsActive || player == null) return;
+
+            var options = duel.GetOptions();
+            if (index >= 0 && index < options.Count)
+            {
+                _session.TryExecute(ActionRequest.ClashSkill(player.Id, options[index].SkillId));
+            }
         }
 
         private void SetCommandMode(PlayerCommandMode mode)
         {
             _cmdMode = mode;
             RefreshValidTargets();
+            RefreshHoverPreviews();
             PlaySfx("ui_select");
         }
 
@@ -631,6 +1054,7 @@ namespace BTH.Game
             {
                 _hoverCoord = GridCoord.None;
                 _previewPathCells.Clear();
+                _aoePreviewCells.Clear();
                 return;
             }
 
@@ -644,15 +1068,7 @@ namespace BTH.Game
                 if (_hoverCoord != coord)
                 {
                     _hoverCoord = coord;
-                    _previewPathCells.Clear();
-                    if (_cmdMode == PlayerCommandMode.Move && _validTargetCells.Contains(coord))
-                    {
-                        var path = TacticalNavigator.PreviewPlayerPath(_session.State, coord);
-                        for (int i = 0; i < path.Count; i++)
-                        {
-                            _previewPathCells.Add(path[i]);
-                        }
-                    }
+                    RefreshHoverPreviews();
                 }
                 if (mouse.leftButton.wasPressedThisFrame)
                 {
@@ -663,6 +1079,7 @@ namespace BTH.Game
             {
                 _hoverCoord = GridCoord.None;
                 _previewPathCells.Clear();
+                _aoePreviewCells.Clear();
             }
         }
 
@@ -721,6 +1138,7 @@ namespace BTH.Game
                     _cmdMode = PlayerCommandMode.Skill1;
                 }
                 RefreshValidTargets();
+                RefreshHoverPreviews();
             }
             else
             {
@@ -737,6 +1155,7 @@ namespace BTH.Game
             {
                 _combatBannerText = "Kẻ Lang Thang dựng Hộ Kiếm (Guard: giảm 80% sát thương nhận vào trong 1 lượt)!";
                 RefreshValidTargets();
+                RefreshHoverPreviews();
             }
             else
             {
@@ -746,13 +1165,9 @@ namespace BTH.Game
 
         private void ExecuteRewind()
         {
-            if (_session.State.Snapshots.CanRewind)
+            if (_session?.State?.Snapshots != null && _session.State.Snapshots.CanRewind)
             {
                 _session.State.Snapshots.Rewind();
-                var state = _session.State;
-                PlayBgm(state.Turn.Phase == TurnPhase.Duel
-                    ? (state.Stage.Duel?.MusicId ?? AudioCatalog.DuelTheme)
-                    : AudioCatalog.StoryTheme);
             }
             else
             {
@@ -764,9 +1179,11 @@ namespace BTH.Game
         {
             if (_session.State.Turn.Phase != TurnPhase.Player) return;
             PlaySfx("ui_confirm");
+            _enemyBeatTimer = 0.55f;
             _session.EndTurn();
             _cmdMode = PlayerCommandMode.Move;
             RefreshValidTargets();
+            RefreshHoverPreviews();
         }
 
         private void UpdateTileOverlays()
@@ -786,11 +1203,18 @@ namespace BTH.Game
                 if (sr == null) continue;
 
                 bool isHover = coord == _hoverCoord;
+                bool isAoe = _aoePreviewCells.Contains(coord);
                 bool isPath = _previewPathCells.Contains(coord);
                 bool isValid = _validTargetCells.Contains(coord);
                 bool isDanger = dangerSet.Contains(coord);
 
-                if (isHover)
+                if (isAoe)
+                {
+                    sr.color = isHover
+                        ? new Color(1f, 0.88f, 0.35f, 0.95f)
+                        : new Color(0.86f, 0.26f, 1.0f, 0.88f * pulse);
+                }
+                else if (isHover)
                 {
                     sr.color = new Color(1f, 0.88f, 0.32f, 0.92f);
                 }
@@ -830,6 +1254,8 @@ namespace BTH.Game
                     _session.State.Turn.FinishStage(_dialogueRunner.Ending);
                 }
                 _dialogueRunner = null;
+                _screenState = AppScreenState.Playing;
+                UpdateBoardVisibility();
             }
         }
 
@@ -839,9 +1265,14 @@ namespace BTH.Game
             _stylesInitialized = true;
 
             _panelStyle = new GUIStyle(GUI.skin.box);
-            _panelStyle.normal.background = MakeStyleTex(new Color(0.08f, 0.09f, 0.13f, 0.94f));
+            _panelStyle.normal.background = MakeStyleTex(new Color(0.08f, 0.09f, 0.13f, 0.95f));
             _panelStyle.normal.textColor = new Color(0.92f, 0.89f, 0.82f);
             _panelStyle.padding = new RectOffset(10, 10, 10, 10);
+
+            _subPanelStyle = new GUIStyle(GUI.skin.box);
+            _subPanelStyle.normal.background = MakeStyleTex(new Color(0.12f, 0.14f, 0.21f, 0.96f));
+            _subPanelStyle.normal.textColor = new Color(0.92f, 0.89f, 0.82f);
+            _subPanelStyle.padding = new RectOffset(8, 8, 8, 8);
 
             _headerStyle = new GUIStyle(GUI.skin.label)
             {
@@ -858,10 +1289,58 @@ namespace BTH.Game
             };
             _labelStyle.normal.textColor = new Color(0.86f, 0.88f, 0.92f);
 
+            _mutedLabelStyle = new GUIStyle(_labelStyle)
+            {
+                fontSize = 12,
+                fontStyle = FontStyle.Italic
+            };
+            _mutedLabelStyle.normal.textColor = new Color(0.68f, 0.72f, 0.80f);
+
             _boldLabelStyle = new GUIStyle(_labelStyle)
             {
                 fontSize = 13,
                 fontStyle = FontStyle.Bold
+            };
+
+            _centerBoldStyle = new GUIStyle(_boldLabelStyle)
+            {
+                alignment = TextAnchor.MiddleCenter
+            };
+
+            _dialogueTextStyle = new GUIStyle(_labelStyle)
+            {
+                fontSize = 15,
+                wordWrap = true
+            };
+            _dialogueTextStyle.normal.textColor = new Color(0.95f, 0.94f, 0.90f);
+
+            _titleStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 46,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter
+            };
+            _titleStyle.normal.textColor = new Color(0.94f, 0.80f, 0.38f);
+
+            _subtitleStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 15,
+                fontStyle = FontStyle.Italic,
+                alignment = TextAnchor.MiddleCenter
+            };
+            _subtitleStyle.normal.textColor = new Color(0.82f, 0.85f, 0.94f);
+
+            _phase2BannerStyle = new GUIStyle(_headerStyle)
+            {
+                fontSize = 30,
+                alignment = TextAnchor.MiddleCenter
+            };
+            _phase2BannerStyle.normal.textColor = new Color(1f, 0.88f, 0.42f, 1f);
+
+            _popupStyle = new GUIStyle(_boldLabelStyle)
+            {
+                fontSize = 15,
+                alignment = TextAnchor.MiddleCenter
             };
 
             _btnStyle = new GUIStyle(GUI.skin.button)
@@ -871,18 +1350,24 @@ namespace BTH.Game
                 alignment = TextAnchor.MiddleLeft,
                 padding = new RectOffset(10, 10, 6, 6)
             };
-            _btnStyle.normal.background = MakeStyleTex(new Color(0.16f, 0.21f, 0.30f, 0.95f));
+            _btnStyle.normal.background = MakeStyleTex(new Color(0.16f, 0.21f, 0.30f, 0.96f));
             _btnStyle.hover.background = MakeStyleTex(new Color(0.24f, 0.32f, 0.46f, 0.98f));
             _btnStyle.normal.textColor = Color.white;
             _btnStyle.hover.textColor = new Color(0.90f, 0.76f, 0.35f);
 
             _activeBtnStyle = new GUIStyle(_btnStyle);
             _activeBtnStyle.normal.background = MakeStyleTex(new Color(0.42f, 0.23f, 0.65f, 0.98f));
+            _activeBtnStyle.hover.background = MakeStyleTex(new Color(0.50f, 0.29f, 0.75f, 0.98f));
             _activeBtnStyle.normal.textColor = new Color(1f, 0.92f, 0.55f);
+
+            _centerBtnStyle = new GUIStyle(_btnStyle) { alignment = TextAnchor.MiddleCenter, fontSize = 13 };
+            _centerActiveBtnStyle = new GUIStyle(_activeBtnStyle) { alignment = TextAnchor.MiddleCenter, fontSize = 13 };
 
             _badgeWinStyle = MakeBadgeStyle(new Color(0.14f, 0.56f, 0.26f, 0.96f));
             _badgeDrawStyle = MakeBadgeStyle(new Color(0.68f, 0.52f, 0.12f, 0.96f));
             _badgeLoseStyle = MakeBadgeStyle(new Color(0.65f, 0.15f, 0.15f, 0.96f));
+            _badgeInfoStyle = MakeBadgeStyle(new Color(0.18f, 0.28f, 0.48f, 0.96f));
+            _smallBadgeStyle = new GUIStyle(_badgeDrawStyle) { fontSize = 11 };
         }
 
         private static GUIStyle MakeBadgeStyle(Color bg)
@@ -920,42 +1405,84 @@ namespace BTH.Game
         private void OnGUI()
         {
             InitStyles();
-            if (_session?.State == null) return;
 
             var prevMatrix = GUI.matrix;
             bool wasEnabled = GUI.enabled;
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity,
                 new Vector3(Screen.width / UiW, Screen.height / UiH, 1f));
-            bool isTransitioning = _transitionTimer > 0f;
-            GUI.enabled = wasEnabled && !isTransitioning;
 
-            if (_session.State.Duel.IsActive)
+            if (_screenState == AppScreenState.MainMenu)
             {
-                DrawDuelScreen();
+                bool menuSubModal = _showStageSelectModal || _showLearnedSkillsModal || _showSettingsModal ||
+                                    _showLoreModal || _showTutorialModal || _showCreditsModal;
+                GUI.enabled = wasEnabled && !menuSubModal;
+                DrawMainMenuScreen();
+                GUI.enabled = wasEnabled;
+
+                DrawActiveUtilityModals();
+
+                GUI.matrix = prevMatrix;
+                return;
+            }
+
+            if (_session?.State == null)
+            {
+                GUI.matrix = prevMatrix;
+                return;
+            }
+
+            bool isTransitioning = _transitionTimer > 0f;
+            bool hasOverlayModal = _isPaused || _showSettingsModal || _showLearnedSkillsModal ||
+                                   _showLoreModal || _showTutorialModal || _showCreditsModal;
+            GUI.enabled = wasEnabled && !isTransitioning && !hasOverlayModal;
+
+            if (_screenState == AppScreenState.Cutscene && _dialogueRunner != null && !_dialogueRunner.IsFinished)
+            {
+                _cutscene.Draw(
+                    _dialogueRunner,
+                    _panelStyle,
+                    _headerStyle,
+                    _dialogueTextStyle,
+                    _mutedLabelStyle,
+                    _centerBtnStyle,
+                    _centerActiveBtnStyle,
+                    _centerBoldStyle,
+                    DrawRect,
+                    DrawSpriteOnGui,
+                    AdvanceOrCompleteCutscene,
+                    ChooseCutsceneOption,
+                    SkipCutscene,
+                    TogglePause);
             }
             else
             {
-                DrawBoardWorldLabels();
-                DrawLeftHudPanel();
-            }
+                if (_session.State.Duel.IsActive)
+                {
+                    DrawDuelScreen();
+                }
+                else
+                {
+                    DrawBoardWorldLabels();
+                    DrawLeftHudPanel();
+                    DrawCombatLogStrip();
+                }
 
-            DrawTopBar();
+                DrawTopBar();
 
-            if (_dialogueRunner != null && !_dialogueRunner.IsFinished)
-            {
-                DrawDialogueOverlay();
-            }
-            else if (_session.State.IsOver)
-            {
-                DrawStageResultModal();
-            }
-
-            if (_showSettingsModal)
-            {
-                DrawSettingsModal();
+                if (_session.State.IsOver)
+                {
+                    DrawStageResultModal();
+                }
             }
 
             GUI.enabled = wasEnabled;
+            if (_isPaused && !(_showSettingsModal || _showLearnedSkillsModal || _showLoreModal || _showTutorialModal || _showCreditsModal))
+            {
+                DrawPauseModal();
+            }
+
+            DrawActiveUtilityModals();
+
             if (isTransitioning)
             {
                 DrawPhase2TransitionOverlay();
@@ -964,48 +1491,351 @@ namespace BTH.Game
             GUI.matrix = prevMatrix;
         }
 
+        private void DrawActiveUtilityModals()
+        {
+            if (_showStageSelectModal) DrawStageSelectModal();
+            if (_showLearnedSkillsModal) DrawLearnedSkillsModal();
+            if (_showLoreModal) DrawLoreModal();
+            if (_showTutorialModal) DrawTutorialModal();
+            if (_showCreditsModal) DrawCreditsModal();
+            if (_showSettingsModal) DrawSettingsModal();
+        }
+
+        private void DrawMainMenuScreen()
+        {
+            var bgTex = ArtCatalog.GetBackground("bg_mausoleum");
+            float drift = Mathf.Sin(_menuAnimTime * 0.25f) * 12f;
+            GUI.DrawTexture(new Rect(-16f + drift, -8f, UiW + 32f, UiH + 16f), bgTex, ScaleMode.StretchToFill);
+            DrawRect(new Rect(0, 0, UiW, UiH), new Color(0.03f, 0.03f, 0.07f, 0.62f));
+
+            for (int i = 0; i < 16; i++)
+            {
+                float px = ((i * 89f + _menuAnimTime * (15f + (i % 4) * 6f)) % (UiW + 30f)) - 15f;
+                float py = UiH - ((i * 53f + _menuAnimTime * (20f + (i % 3) * 9f)) % UiH);
+                Color c = (i % 2 == 0)
+                    ? new Color(0.90f, 0.76f, 0.35f, 0.35f)
+                    : new Color(0.55f, 0.35f, 0.85f, 0.38f);
+                DrawRect(new Rect(px, py, 4, 4), c);
+            }
+
+            int animFrame = Mathf.FloorToInt(_menuAnimTime * 5.5f) % 4;
+            var wFrames = ArtCatalog.GetUnitAnimFrames(UnitCatalog.WandererId, UnitAnimState.Idle);
+            var eFrames = ArtCatalog.GetUnitAnimFrames(UnitCatalog.EosphorosId, UnitAnimState.Idle);
+            float bobL = Mathf.Sin(_menuAnimTime * 2.2f) * 4f;
+            float bobR = Mathf.Sin(_menuAnimTime * 2.2f + 1.2f) * 4f;
+
+            DrawSpriteOnGui(new Rect(85, 290 + bobL, 260, 260), wFrames[animFrame % wFrames.Length], flipX: false);
+            DrawSpriteOnGui(new Rect(UiW - 345, 290 + bobR, 260, 260), eFrames[animFrame % eFrames.Length], flipX: true);
+
+            DrawRect(new Rect(280, 40, 720, 4), new Color(0.90f, 0.76f, 0.35f, 0.85f));
+            GUI.Label(new Rect(180, 52, 920, 62), "BEHIND THE HERO", _titleStyle);
+            GUI.Label(new Rect(220, 114, 840, 28),
+                "Kẻ Lang Thang & Lời Nguyền Thời Gian — Chiến Thuật Giải Đố 1v1", _subtitleStyle);
+            DrawRect(new Rect(380, 148, 520, 2), new Color(0.55f, 0.36f, 0.84f, 0.75f));
+
+            float cardH = _hasActiveRun ? 458f : 408f;
+            Rect menuBox = new Rect(UiW * 0.5f - 220f, 174f, 440f, cardH);
+            GUI.Box(menuBox, GUIContent.none, _panelStyle);
+            DrawRect(new Rect(menuBox.x, menuBox.y, menuBox.width, 3), new Color(0.90f, 0.76f, 0.35f, 0.9f));
+
+            float y = menuBox.y + 18f;
+            float bw = menuBox.width - 44f;
+            float bx = menuBox.x + 22f;
+
+            if (_hasActiveRun)
+            {
+                if (GUI.Button(new Rect(bx, y, bw, 42), "▶  TIẾP TỤC HÀNH TRÌNH (CONTINUE)", _centerActiveBtnStyle))
+                {
+                    ResumeActiveRunFromMenu();
+                }
+                y += 50f;
+            }
+
+            if (GUI.Button(new Rect(bx, y, bw, 42),
+                _hasActiveRun ? "⚔  BẮT ĐẦU MỚI TỪ ĐẦU (NEW GAME)" : "▶  BẮT ĐẦU GAME (NEW GAME)",
+                _hasActiveRun ? _centerBtnStyle : _centerActiveBtnStyle))
+            {
+                StartNewGame();
+            }
+            y += 50f;
+
+            if (GUI.Button(new Rect(bx, y, bw, 38), "🗺  CHỌN ẢI CHIẾN ĐẤU (ẢI 1 – 5)", _centerBtnStyle))
+            {
+                CloseAllModals();
+                _showStageSelectModal = true;
+                PlaySfx("ui_select");
+            }
+            y += 46f;
+
+            int knownCount = _session?.Knowledge?.KnownBossSkillCount ?? 0;
+            if (GUI.Button(new Rect(bx, y, bw, 38), $"📖  CHIÊU ĐÃ HỌC ({knownCount})", _centerBtnStyle))
+            {
+                ToggleLearnedSkillsModal();
+            }
+            y += 46f;
+
+            float halfW = (bw - 10f) * 0.5f;
+            if (GUI.Button(new Rect(bx, y, halfW, 38), "📜 CỐT TRUYỆN 3 HỒI", _centerBtnStyle))
+            {
+                ToggleLoreModal();
+            }
+            if (GUI.Button(new Rect(bx + halfW + 10f, y, halfW, 38), "❓ HƯỚNG DẪN CHƠI", _centerBtnStyle))
+            {
+                ToggleTutorialModal();
+            }
+            y += 46f;
+
+            if (GUI.Button(new Rect(bx, y, bw, 38), "⚙  CÀI ĐẶT (SETTINGS)", _centerBtnStyle))
+            {
+                CloseAllModals();
+                _showSettingsModal = true;
+                PlaySfx("ui_select");
+            }
+            y += 46f;
+
+            if (GUI.Button(new Rect(bx, y, halfW, 36), "★ CREDITS", _centerBtnStyle))
+            {
+                ToggleCreditsModal();
+            }
+            if (GUI.Button(new Rect(bx + halfW + 10f, y, halfW, 36), "✕ THOÁT GAME", _centerBtnStyle))
+            {
+                QuitGame();
+            }
+
+            GUI.Label(new Rect(0, UiH - 36, UiW, 24),
+                "Phase 1: Giải đố ô lưới & Né Telegraph  ·  Phase 2: Đấu Kỹ Clash 1v1  ·  [ESC] Tạm dừng",
+                _subtitleStyle);
+        }
+
+        private void DrawStageSelectModal()
+        {
+            DrawRect(new Rect(0, 0, UiW, UiH), new Color(0f, 0f, 0f, 0.65f));
+            Rect modal = new Rect(UiW * 0.5f - 360f, 80f, 720f, 540f);
+            GUI.Box(modal, GUIContent.none, _panelStyle);
+            DrawRect(new Rect(modal.x, modal.y, modal.width, 3), new Color(0.90f, 0.76f, 0.35f, 0.9f));
+
+            GUI.Label(new Rect(modal.x + 20, modal.y + 14, 520, 28), "🗺 CHỌN ẢI CHIẾN ĐẤU (5 ẢI)", _headerStyle);
+            if (GUI.Button(new Rect(modal.xMax - 92, modal.y + 12, 74, 28), "Đóng", _centerActiveBtnStyle))
+            {
+                _showStageSelectModal = false;
+                PlaySfx("ui_select");
+            }
+
+            var stages = StageCatalog.All();
+            float y = modal.y + 56f;
+            for (int i = 0; i < stages.Count; i++)
+            {
+                var st = stages[i];
+                Rect row = new Rect(modal.x + 18, y, modal.width - 36, 86);
+                GUI.Box(row, GUIContent.none, _subPanelStyle);
+
+                string bossPortraitId = st.Spawns.Count > 0 ? st.Spawns[0].Definition.PortraitId : "boss-ashen";
+                GUI.DrawTexture(new Rect(row.x + 10, row.y + 11, 64, 64),
+                    ArtCatalog.GetPortrait(bossPortraitId), ScaleMode.ScaleToFit);
+
+                GUI.Label(new Rect(row.x + 86, row.y + 8, 430, 22),
+                    $"ẢI {i + 1}: {st.DisplayName}  ({st.Width}×{st.Height} · {st.TurnLimit} lượt)", _headerStyle);
+                GUI.Label(new Rect(row.x + 86, row.y + 32, 440, 46),
+                    StageCatalog.GetPuzzleDescription(st.Id), _labelStyle);
+
+                if (GUI.Button(new Rect(row.xMax - 144, row.y + 23, 130, 38), "▶ VÀO ẢI", _centerActiveBtnStyle))
+                {
+                    SelectStageFromMenu(st.Id);
+                    return;
+                }
+
+                y += 94f;
+            }
+        }
+
+        private void DrawLoreModal()
+        {
+            DrawRect(new Rect(0, 0, UiW, UiH), new Color(0.01f, 0.01f, 0.03f, 0.72f));
+            Rect modal = new Rect(UiW * 0.5f - 390f, 64f, 780f, 592f);
+            GUI.Box(modal, GUIContent.none, _panelStyle);
+            DrawRect(new Rect(modal.x, modal.y, modal.width, 3), new Color(0.90f, 0.76f, 0.35f, 0.95f));
+
+            GUI.Label(new Rect(modal.x + 20, modal.y + 14, 560, 28),
+                "📜 CỐT TRUYỆN 3 HỒI — BIÊN NIÊN SỬ OAKHAVEN", _headerStyle);
+            if (GUI.Button(new Rect(modal.xMax - 92, modal.y + 12, 74, 28), "Đóng", _centerActiveBtnStyle))
+            {
+                _showLoreModal = false;
+                PlaySfx("ui_select");
+            }
+
+            var acts = DialogueCatalog.GetThreeActsLore();
+            Rect viewRect = new Rect(modal.x + 16, modal.y + 52, modal.width - 32, modal.height - 108);
+            Rect contentRect = new Rect(0, 0, viewRect.width - 22, acts.Count * 210f + 20f);
+            _loreScroll = GUI.BeginScrollView(viewRect, _loreScroll, contentRect);
+
+            float y = 6f;
+            for (int i = 0; i < acts.Count; i++)
+            {
+                Rect box = new Rect(4, y, contentRect.width - 8, 198f);
+                GUI.Box(box, GUIContent.none, _subPanelStyle);
+                GUI.Label(new Rect(box.x + 12, box.y + 8, box.width - 24, 24), $"✦ {acts[i].Title}", _headerStyle);
+                GUI.Label(new Rect(box.x + 12, box.y + 36, box.width - 24, 152), acts[i].Content, _labelStyle);
+                y += 208f;
+            }
+
+            GUI.EndScrollView();
+
+            if (GUI.Button(new Rect(modal.x + 20, modal.yMax - 44, modal.width - 40, 32), "Đóng [ESC]", _centerActiveBtnStyle))
+            {
+                _showLoreModal = false;
+                PlaySfx("ui_select");
+            }
+        }
+
+        private void DrawTutorialModal()
+        {
+            DrawRect(new Rect(0, 0, UiW, UiH), new Color(0.01f, 0.01f, 0.03f, 0.72f));
+            Rect modal = new Rect(UiW * 0.5f - 390f, 64f, 780f, 592f);
+            GUI.Box(modal, GUIContent.none, _panelStyle);
+            DrawRect(new Rect(modal.x, modal.y, modal.width, 3), new Color(0.35f, 0.65f, 0.95f, 0.95f));
+
+            GUI.Label(new Rect(modal.x + 20, modal.y + 14, 560, 28),
+                "❓ HƯỚNG DẪN CHƠI & PHÍM TẮT", _headerStyle);
+            if (GUI.Button(new Rect(modal.xMax - 92, modal.y + 12, 74, 28), "Đóng", _centerActiveBtnStyle))
+            {
+                _showTutorialModal = false;
+                PlaySfx("ui_select");
+            }
+
+            Rect viewRect = new Rect(modal.x + 16, modal.y + 52, modal.width - 32, modal.height - 108);
+            Rect contentRect = new Rect(0, 0, viewRect.width - 22, 620f);
+            _tutorialScroll = GUI.BeginScrollView(viewRect, _tutorialScroll, contentRect);
+
+            float y = 6f;
+            y = DrawTutorialCard(contentRect.width - 8, y, "1. PHASE 1 — GIẢI ĐỐ BÀN CỜ (DƯỚI 70% HP BOSS)",
+                "• Mỗi lượt Kẻ Lang Thang có 2 AP (1 Di chuyển tối đa 2 ô + 1 Đánh/Kỹ năng/Guard).\n" +
+                "• Ô ĐỎ NHẤP NHÁY là vùng nguy hiểm (Telegraph) Boss sẽ tấn công vào cuối lượt. Hãy di chuyển né ra ngoài hoặc nấp sau Trụ Đá (chặn LOS)!\n" +
+                "• ĐỊA HÌNH: Sàn Nứt (sập thành Vực thẳm), Đầm Độc (tốn 2 bước, -3 HP), Dung Nham (-4 HP), Rương Kho Báu (+4 HP tức thời).", 116f);
+
+            y = DrawTutorialCard(contentRect.width - 8, y, "2. PHASE 2 — DUEL MODE (ĐẤU CHIÊU ĐỐI KHÁNG 1V1)",
+                "• Khi HP Boss tụt xuống dưới 70%, bàn cờ chuyển sang sàn đấu Duel 1v1.\n" +
+                "• Mỗi vòng Boss ra 1 tuyệt kỹ (theo chu kỳ 2 chiêu). Bạn chọn 1 trong 3 thẻ chiêu Clash để đối đầu.\n" +
+                "• Cảnh báo Thắng/Hòa/Thua mặc định được ẨN để giữ thử thách: hãy quan sát Hệ & Uy lực hoặc bấm nút [💡 GỢI Ý (H)] để hiện dự đoán và khắc chế đã học!\n" +
+                "• THẮNG: Gắn hiệu ứng (Stagger ×2 / Poison / Flanked ×1.5) + tự động tung đòn kết liễu! HÒA: Mỗi bên mất 10% uy lực. THUA: Nhận nguyên Uy lực Boss.", 148f);
+
+            y = DrawTutorialCard(contentRect.width - 8, y, "3. LỜI NGUYỀN TUA NGƯỢC (REWIND) & SỔ TAY CHIÊU [K]",
+                "• Khi gục ngã hoặc bước nhầm, bấm nút [UNDO / Rewind (R)] để quay về Checkpoint đầu lượt hoặc đầu Duel.\n" +
+                "• Mọi chiêu Boss từng thấy và đòn khắc chế bạn đã thắng Clash được LƯU TRONG SỔ TAY [K] xuyên suốt cả lượt chạy (kể cả qua Rewind và chuyển ải).", 104f);
+
+            DrawTutorialCard(contentRect.width - 8, y, "4. BẢNG PHÍM TẮT NHANH",
+                "• [G] Di chuyển (Move)     ·  [S] Chém thường (Slash)  ·  [D] Hộ Kiếm (Guard -80% DMG)\n" +
+                "• [1] Trảm Tốc (5 DMG)     ·  [2] Bùng Nổ Hoại Tử (Chữ thập)  ·  [E / 3] Bước Nhảy Thời Gian\n" +
+                "• [Space] Kết thúc lượt / Qua thoại  ·  [R] Rewind  ·  [H] Bật/Tắt Gợi ý Duel  ·  [K] Chiêu đã học  ·  [ESC] Tạm dừng", 104f);
+
+            GUI.EndScrollView();
+
+            if (GUI.Button(new Rect(modal.x + 20, modal.yMax - 44, modal.width - 40, 32), "Đã hiểu [ESC]", _centerActiveBtnStyle))
+            {
+                _showTutorialModal = false;
+                PlaySfx("ui_select");
+            }
+        }
+
+        private float DrawTutorialCard(float w, float y, string title, string body, float height)
+        {
+            Rect box = new Rect(4, y, w, height);
+            GUI.Box(box, GUIContent.none, _subPanelStyle);
+            GUI.Label(new Rect(box.x + 12, box.y + 8, box.width - 24, 24), title, _headerStyle);
+            GUI.Label(new Rect(box.x + 12, box.y + 34, box.width - 24, height - 42), body, _labelStyle);
+            return y + height + 10f;
+        }
+
+        private void DrawCreditsModal()
+        {
+            DrawRect(new Rect(0, 0, UiW, UiH), new Color(0.01f, 0.01f, 0.03f, 0.72f));
+            Rect modal = new Rect(UiW * 0.5f - 290f, UiH * 0.5f - 175f, 580f, 350f);
+            GUI.Box(modal, GUIContent.none, _panelStyle);
+            DrawRect(new Rect(modal.x, modal.y, modal.width, 3), new Color(0.90f, 0.76f, 0.35f, 0.95f));
+
+            GUI.Label(new Rect(modal.x + 20, modal.y + 14, modal.width - 40, 28), "★ THÔNG TIN DỰ ÁN & CREDITS", _headerStyle);
+            GUI.Label(new Rect(modal.x + 24, modal.y + 54, modal.width - 48, 220),
+                "BEHIND THE HERO — Đồ án Phát triển Game (Unity 6000.6)\n" +
+                "Nhóm 10 · Lớp 65CNTT · Trường Đại học Thủy Lợi\n\n" +
+                "• Ngô Quý Kiên (2351060457) — Kiến trúc Core, Ma trận cân bằng & Duel Loop\n" +
+                "• Nguyễn Tuấn Kiệt (2351060458) — A* Pathfinding, AI Telegraph & RunKnowledge Rewind\n" +
+                "• Nguyễn Xuân Lăng (2351060459) — Spritesheet, Tileset, VFX, 5 Ải giải đố & Giao diện UI/Cutscene\n" +
+                "• Phạm Thị Huyền Linh (2351060460) — Kịch bản 3 Hồi, 2 Kết thúc & Hệ thống Âm thanh\n\n" +
+                "• Tài nguyên tham khảo & công cụ: Kenney Tiny Dungeon / Pixel UI, 0x72 Dungeon Tileset.",
+                _labelStyle);
+
+            if (GUI.Button(new Rect(modal.x + 20, modal.yMax - 46, modal.width - 40, 34), "Đóng [ESC]", _centerActiveBtnStyle))
+            {
+                _showCreditsModal = false;
+                PlaySfx("ui_select");
+            }
+        }
+
         private void DrawTopBar()
         {
             var state = _session.State;
             var boss = state.Units.Boss;
+            bool inDuel = state.Duel.IsActive;
 
-            GUI.Box(new Rect(280, 8, UiW - 288, 84), GUIContent.none, _panelStyle);
+            float barX = inDuel ? 8f : 280f;
+            float barW = UiW - barX - 8f;
+            GUI.Box(new Rect(barX, 8, barW, 84), GUIContent.none, _panelStyle);
 
-            GUI.Label(new Rect(292, 14, 100, 22), "MÀN CHƠI:", _headerStyle);
-            string[] stages = { "stage-1", "stage-2", "stage-3", "stage-4", "stage-5" };
-            for (int i = 0; i < stages.Length; i++)
+            if (_options.ShowDevStageBar)
             {
-                string sid = stages[i];
-                var st = _currentStageId == sid ? _activeBtnStyle : _btnStyle;
-                if (GUI.Button(new Rect(395 + i * 68, 12, 64, 26), $"Ải {i + 1}", st))
+                GUI.Label(new Rect(barX + 12, 14, 90, 22), "MÀN CHƠI:", _headerStyle);
+                for (int i = 0; i < StageIds.Length; i++)
                 {
-                    LoadStage(sid);
+                    string sid = StageIds[i];
+                    var st = _currentStageId == sid ? _centerActiveBtnStyle : _centerBtnStyle;
+                    if (GUI.Button(new Rect(barX + 102 + i * 62, 12, 58, 26), $"Ải {i + 1}", st))
+                    {
+                        LoadStage(sid, playIntro: true);
+                    }
                 }
             }
+            else
+            {
+                GUI.Label(new Rect(barX + 12, 14, 410, 24), $"⚔ {state.Stage.DisplayName}", _headerStyle);
+            }
 
-            float rightX = UiW - 294;
-            if (GUI.Button(new Rect(rightX, 12, 86, 26), "↺ UNDO", _btnStyle))
+            float rightEdge = barX + barW - 10f;
+            if (GUI.Button(new Rect(rightEdge - 96, 12, 96, 26), "⏸ PAUSE", _isPaused ? _centerActiveBtnStyle : _centerBtnStyle))
+            {
+                TogglePause();
+            }
+            if (GUI.Button(new Rect(rightEdge - 196, 12, 94, 26), "⚙ CÀI ĐẶT", _showSettingsModal ? _centerActiveBtnStyle : _centerBtnStyle))
+            {
+                CloseAllModals();
+                _showSettingsModal = true;
+                PlaySfx("ui_select");
+            }
+            if (GUI.Button(new Rect(rightEdge - 306, 12, 104, 26), "↻ RESET[X]", _centerBtnStyle))
+            {
+                LoadStage(_currentStageId, playIntro: false);
+            }
+            if (GUI.Button(new Rect(rightEdge - 390, 12, 78, 26), "↺ UNDO", _centerBtnStyle))
             {
                 ExecuteRewind();
             }
-            if (GUI.Button(new Rect(rightX + 90, 12, 92, 26), "⟳ RESET[X]", _btnStyle))
+            int knownCount = state.Knowledge?.KnownBossSkillCount ?? 0;
+            if (GUI.Button(new Rect(rightEdge - 516, 12, 120, 26), $"📖 CHIÊU ({knownCount})",
+                _showLearnedSkillsModal ? _centerActiveBtnStyle : _centerBtnStyle))
             {
-                LoadStage(_currentStageId);
-            }
-            if (GUI.Button(new Rect(rightX + 186, 12, 96, 26), "⚙ CÀI ĐẶT", _showSettingsModal ? _activeBtnStyle : _btnStyle))
-            {
-                _showSettingsModal = !_showSettingsModal;
+                ToggleLearnedSkillsModal();
             }
 
             if (boss != null)
             {
                 var bossPortrait = ArtCatalog.GetPortrait(boss.Definition.PortraitId);
-                GUI.DrawTexture(new Rect(292, 42, 42, 42), bossPortrait, ScaleMode.ScaleToFit);
+                GUI.DrawTexture(new Rect(barX + 12, 42, 42, 42), bossPortrait, ScaleMode.ScaleToFit);
 
-                string phaseTag = state.Duel.IsActive ? " [PHASE 2: DUEL MODE]" : " [PHASE 1: BÀN CỜ]";
-                GUI.Label(new Rect(342, 41, 350, 20), $"{boss.Definition.DisplayName}{phaseTag}", _headerStyle);
+                string phaseTag = inDuel ? " [DUEL]" : " [BÀN CỜ]";
+                string armTag = boss.Definition.Armor > 0 ? $" · Giáp {boss.Definition.Armor}" : string.Empty;
+                string statusTag = FormatUnitStatusTags(boss);
+                GUI.Label(new Rect(barX + 62, 41, 355, 20),
+                    $"{boss.Definition.DisplayName}{phaseTag}{armTag}{statusTag}", _headerStyle);
 
-                Rect barBg = new Rect(342, 63, 330, 18);
+                Rect barBg = new Rect(barX + 62, 63, 330, 18);
                 DrawRect(barBg, new Color(0.18f, 0.08f, 0.08f, 1f));
                 float ratio = Mathf.Clamp01(boss.HpRatio);
                 DrawRect(new Rect(barBg.x, barBg.y, barBg.width * ratio, barBg.height),
@@ -1017,9 +1847,24 @@ namespace BTH.Game
                     $"HP BOSS: {boss.Hp} / {boss.MaxHp}  (Phase 2 < 70%)", _boldLabelStyle);
             }
 
+            float descX = barX + 412f;
+            string bannerLine = _enemyBeatTimer > 0f
+                ? "⚔ LƯỢT CỦA BOSS — ĐÃ THỰC THI Ý ĐỒ!"
+                : _combatBannerText;
             string puzzleDesc = StageCatalog.GetPuzzleDescription(_currentStageId);
-            GUI.Label(new Rect(682, 40, UiW - 694, 48),
-                $"★ {puzzleDesc}\n► {_combatBannerText}", _labelStyle);
+            GUI.Label(new Rect(descX, 40, barX + barW - descX - 10f, 48),
+                $"★ {puzzleDesc}\n► {bannerLine}", _labelStyle);
+        }
+
+        private static string FormatUnitStatusTags(UnitState unit)
+        {
+            if (unit == null || unit.Statuses.Count == 0) return string.Empty;
+            var list = new List<string>();
+            foreach (var st in unit.Statuses.Effects)
+            {
+                list.Add($"{st.Id.Value.ToUpperInvariant()}({unit.Statuses.GetRemaining(st.Id)}T)");
+            }
+            return " · " + string.Join(", ", list);
         }
 
         private void DrawLeftHudPanel()
@@ -1058,7 +1903,7 @@ namespace BTH.Game
             }
 
             GUI.Label(new Rect(20, 132, 240, 20), "STATUS:", _headerStyle);
-            string phaseText = $"Active (Turn: {state.Turn.TurnIndex} / {state.Stage.TurnLimit})";
+            string phaseText = $"Turn: {state.Turn.TurnIndex} / {state.Stage.TurnLimit}  ({state.Turn.Phase})";
             GUI.Label(new Rect(20, 152, 240, 20), phaseText, _boldLabelStyle);
 
             string statusLine = "Hiệu ứng: Không";
@@ -1071,21 +1916,31 @@ namespace BTH.Game
                 }
                 statusLine = "Hiệu ứng: " + string.Join(", ", names);
             }
-            GUI.Label(new Rect(20, 172, 240, 22), statusLine, _labelStyle);
+            GUI.Label(new Rect(20, 172, 240, 20), statusLine, _labelStyle);
             DrawRunKnowledge(new Rect(20, 192, 240, 20), state.Knowledge);
 
-            GUI.Label(new Rect(20, 220, 240, 22), "ACTIONS:", _headerStyle);
-            float by = 246f;
-            float bh = 32f;
-            float gap = 36f;
+            GUI.Label(new Rect(20, 218, 240, 22), "ACTIONS:", _headerStyle);
+            float by = 244f;
+            float bh = 31f;
+            float gap = 35f;
 
-            if (GUI.Button(new Rect(20, by, 240, bh), "➡  Move                        [G]",
+            bool prevEnabled = GUI.enabled;
+            bool isPlayerTurn = state.Turn.Phase == TurnPhase.Player && !state.IsOver && player != null && !player.IsStaggered;
+            bool canMove = isPlayerTurn && !player.HasMovedThisTurn && !player.IsRooted && state.Turn.CanSpend(player.Id, 1);
+            bool canAct = isPlayerTurn && !player.HasActedThisTurn && state.Turn.CanSpend(player.Id, 1);
+            int cdBurst = player?.GetCooldown("necrotic-burst") ?? 0;
+            int cdStep = player?.GetCooldown("temporal-step") ?? 0;
+
+            GUI.enabled = prevEnabled && canMove;
+            string moveLabel = (player != null && player.HasMovedThisTurn) ? "➡  Move [ĐÃ ĐI]              [G]" : "➡  Move                        [G]";
+            if (GUI.Button(new Rect(20, by, 240, bh), moveLabel,
                 _cmdMode == PlayerCommandMode.Move ? _activeBtnStyle : _btnStyle))
             {
                 SetCommandMode(PlayerCommandMode.Move);
             }
             by += gap;
 
+            GUI.enabled = prevEnabled && canAct;
             if (GUI.Button(new Rect(20, by, 240, bh), "⚔  Slash                       [S]",
                 _cmdMode == PlayerCommandMode.Attack ? _activeBtnStyle : _btnStyle))
             {
@@ -1100,54 +1955,60 @@ namespace BTH.Game
             }
             by += gap;
 
-            if (GUI.Button(new Rect(20, by, 240, bh), "☣  Necrotic Burst              [2]",
+            GUI.enabled = prevEnabled && canAct && cdBurst == 0;
+            string burstLabel = cdBurst > 0 ? $"☣  Necrotic Burst [CD:{cdBurst}T]      [2]" : "☣  Necrotic Burst              [2]";
+            if (GUI.Button(new Rect(20, by, 240, bh), burstLabel,
                 _cmdMode == PlayerCommandMode.Skill2 ? _activeBtnStyle : _btnStyle))
             {
                 SetCommandMode(PlayerCommandMode.Skill2);
             }
             by += gap;
 
-            if (GUI.Button(new Rect(20, by, 240, bh), "⌛  Temporal Step               [E]",
+            GUI.enabled = prevEnabled && canAct && cdStep == 0;
+            string stepLabel = cdStep > 0 ? $"⌛  Temporal Step [CD:{cdStep}T]       [E]" : "⌛  Temporal Step               [E]";
+            if (GUI.Button(new Rect(20, by, 240, bh), stepLabel,
                 _cmdMode == PlayerCommandMode.Skill3 ? _activeBtnStyle : _btnStyle))
             {
                 SetCommandMode(PlayerCommandMode.Skill3);
             }
             by += gap;
 
+            GUI.enabled = prevEnabled && canAct;
             if (GUI.Button(new Rect(20, by, 240, bh), "🛡  Guard                       [D]", _btnStyle))
             {
                 ExecuteGuard();
             }
             by += gap;
 
+            GUI.enabled = prevEnabled && state.Snapshots.CanRewind;
             if (GUI.Button(new Rect(20, by, 240, bh), "↺  Rewind                      [R]", _btnStyle))
             {
                 ExecuteRewind();
             }
             by += gap;
 
+            GUI.enabled = prevEnabled && state.Turn.Phase == TurnPhase.Player && !state.IsOver;
             if (GUI.Button(new Rect(20, by, 240, bh), "⏭  End Turn                [Space]", _btnStyle))
             {
                 ExecuteEndTurn();
             }
-            by += gap + 6f;
+            GUI.enabled = prevEnabled;
+            by += gap + 4f;
 
-            GUI.Label(new Rect(20, by, 240, 20), "THÔNG TIN Ô CỜ:", _headerStyle);
-            by += 22f;
+            GUI.Label(new Rect(20, by, 240, 20), "THÔNG TIN & GỢI Ý:", _headerStyle);
+            by += 20f;
             if (_hoverCoord.IsValid && state.Grid.InBounds(_hoverCoord))
             {
                 var cState = state.Grid.Get(_hoverCoord);
                 var tSpec = TerrainCatalog.Get(cState.Terrain);
                 string collapseInfo = cState.TurnsUntilCollapse > 0 ? $" [Sập sau {cState.TurnsUntilCollapse} lượt]" : "";
-                GUI.Label(new Rect(20, by, 240, 85),
+                GUI.Label(new Rect(20, by, 240, 82),
                     $"Ô ({_hoverCoord.X},{_hoverCoord.Y}): {tSpec.DisplayName}{collapseInfo}\n• {tSpec.TacticalDescription}",
                     _labelStyle);
             }
             else
             {
-                GUI.Label(new Rect(20, by, 240, 85),
-                    "Current Turn: Wanderer\n• Ô xanh lam: Vùng đi được (A*)\n• Ô đỏ nhấp nháy: Telegraph Boss",
-                    _labelStyle);
+                GUI.Label(new Rect(20, by, 240, 82), GetSelectedCommandTip(), _labelStyle);
             }
 
             var boss = state.Units.Boss;
@@ -1155,8 +2016,37 @@ namespace BTH.Game
                 _session.Skills.TryGet(intent.SkillId, out var skill))
             {
                 string familiarity = state.Knowledge.HasSeenBossSkill(skill.Id) ? "Đã gặp" : "Chiêu mới";
-                GUI.Label(new Rect(20, 650, 240, 44), $"Boss chuẩn bị · {familiarity}\n{skill.DisplayName}", _labelStyle);
+                GUI.Label(new Rect(20, 652, 240, 44), $"Boss chuẩn bị · {familiarity}\n{skill.DisplayName}", _labelStyle);
             }
+        }
+
+        private string GetSelectedCommandTip()
+        {
+            switch (_cmdMode)
+            {
+                case PlayerCommandMode.Move:
+                    return "Di chuyển [G]: Đi tối đa 2 ô theo đường A* (Ô xanh lam). Né ô đỏ Telegraph!";
+                case PlayerCommandMode.Attack:
+                    return "Slash [S]: Đánh thường 4 DMG (tầm 1 ô quanh footprint Boss).";
+                case PlayerCommandMode.Skill1:
+                    return "Swift Slash [1]: Chém 5 DMG (Physical), tầm 1 ô, không hồi chiêu.";
+                case PlayerCommandMode.Skill2:
+                    return "Necrotic Burst [2]: Nổ 5 DMG hình chữ thập 5 ô (tầm 1–2, CD 1 lượt). Rê chuột xem vùng tím!";
+                case PlayerCommandMode.Skill3:
+                    return "Temporal Step [E]: Dịch chuyển 1–3 ô vượt Vực thẳm + nhận Guard (CD 2 lượt).";
+                default:
+                    return string.Empty;
+            }
+        }
+
+        private void DrawCombatLogStrip()
+        {
+            if (_combatLog.Count == 0) return;
+            Rect strip = new Rect(UiW - 376, UiH - 96, 368, 88);
+            GUI.Box(strip, GUIContent.none, _panelStyle);
+            GUI.Label(new Rect(strip.x + 10, strip.y + 4, 240, 18), "NHẬT KÝ CHIẾN ĐẤU:", _headerStyle);
+            string body = string.Join("\n", _combatLog);
+            GUI.Label(new Rect(strip.x + 10, strip.y + 24, strip.width - 20, 60), body, _labelStyle);
         }
 
         private void DrawBoardWorldLabels()
@@ -1179,15 +2069,15 @@ namespace BTH.Game
 
                     if (cell.TurnsUntilCollapse > 0)
                     {
-                        GUI.Box(new Rect(guiX - 32, guiY + 8, 64, 19), $"NỨT:{cell.TurnsUntilCollapse}T", _badgeDrawStyle);
+                        GUI.Box(new Rect(guiX - 28, guiY + 12, 56, 17), $"NỨT:{cell.TurnsUntilCollapse}T", _smallBadgeStyle);
                     }
                     else if (cell.Terrain == TerrainId.Chest)
                     {
-                        GUI.Box(new Rect(guiX - 32, guiY + 8, 64, 19), "RƯƠNG", _badgeWinStyle);
+                        GUI.Box(new Rect(guiX - 28, guiY + 12, 56, 17), "RƯƠNG", _badgeWinStyle);
                     }
                     else if (cell.IsHazard)
                     {
-                        GUI.Box(new Rect(guiX - 30, guiY + 10, 60, 18), $"-{cell.HazardDamagePerTurn}HP", _badgeLoseStyle);
+                        GUI.Box(new Rect(guiX - 26, guiY + 12, 52, 16), $"-{cell.HazardDamagePerTurn}HP", _badgeLoseStyle);
                     }
                 }
             }
@@ -1195,23 +2085,24 @@ namespace BTH.Game
             foreach (var u in state.Units.All)
             {
                 if (!_unitAnimators.TryGetValue(u.Id, out var anim) || anim == null) continue;
-                Vector3 topWorld = anim.transform.position + new Vector3(0f, u.SizeY > 1 ? 1.35f : 0.75f, 0f);
+                Vector3 topWorld = anim.transform.position + new Vector3(0f, u.SizeY > 1 ? 1.32f : 0.72f, 0f);
                 Vector3 sp = _mainCam.WorldToScreenPoint(topWorld);
                 if (sp.z < 0) continue;
                 float guiX = sp.x * sx;
                 float guiY = (Screen.height - sp.y) * sy;
 
-                Rect bar = new Rect(guiX - 36, guiY - 12, 72, 11);
+                Rect bar = new Rect(guiX - 30, guiY - 10, 60, 9);
                 DrawRect(bar, new Color(0.1f, 0.1f, 0.12f, 0.9f));
                 Color hpCol = u.Faction == UnitFaction.Player
                     ? new Color(0.25f, 0.85f, 0.38f, 1f)
                     : new Color(0.92f, 0.24f, 0.24f, 1f);
                 DrawRect(new Rect(bar.x + 1, bar.y + 1, (bar.width - 2) * Mathf.Clamp01(u.HpRatio), bar.height - 2),
                     hpCol);
-                GUI.Label(new Rect(guiX - 45, guiY - 28, 90, 18), $"{u.Hp}/{u.MaxHp}", _badgeDrawStyle);
+                GUI.Label(new Rect(guiX - 32, guiY - 26, 64, 16), $"{u.Hp}/{u.MaxHp}", _smallBadgeStyle);
             }
 
             var popups = _vfxManager.ActivePopups;
+            Color prevColor = GUI.contentColor;
             for (int i = 0; i < popups.Count; i++)
             {
                 var p = popups[i];
@@ -1219,10 +2110,10 @@ namespace BTH.Game
                 if (sp.z < 0) continue;
                 float guiX = sp.x * sx;
                 float guiY = (Screen.height - sp.y) * sy;
-                var st = new GUIStyle(_boldLabelStyle) { fontSize = 15, alignment = TextAnchor.MiddleCenter };
-                st.normal.textColor = p.Color;
-                GUI.Label(new Rect(guiX - 90, guiY - 12, 180, 26), p.Text, st);
+                GUI.contentColor = p.Color;
+                GUI.Label(new Rect(guiX - 95, guiY - 14, 190, 26), p.Text, _popupStyle);
             }
+            GUI.contentColor = prevColor;
         }
 
         private void DrawDuelScreen()
@@ -1236,87 +2127,349 @@ namespace BTH.Game
             Rect arena = new Rect(8, 96, UiW - 16, UiH - 104);
             var bgTex = ArtCatalog.GetBackground(duel.Definition.BackgroundId);
             GUI.DrawTexture(arena, bgTex, ScaleMode.StretchToFill);
+            DrawRect(arena, new Color(0.03f, 0.03f, 0.06f, 0.22f));
 
-            GUI.Box(new Rect(arena.x + 20, arena.y + 14, arena.width - 40, 74), GUIContent.none, _panelStyle);
+            Rect bannerRect = new Rect(arena.x + 16, arena.y + 10, arena.width - 32, 76);
+            GUI.Box(bannerRect, GUIContent.none, _panelStyle);
+
             string bossSkillName = duel.State.BossSkillId;
             if (_session.Skills.TryGet(duel.State.BossSkillId, out var bSkill))
             {
                 bossSkillName = bSkill.DisplayName;
             }
-            GUI.Label(new Rect(arena.x + 36, arena.y + 20, arena.width - 70, 26),
-                $"⚔ PHASE 2: DUEL MODE — VÒNG {duel.State.Round}  |  BOSS RA CHIÊU: [{bossSkillName.ToUpperInvariant()}] (UY LỰC: {duel.State.BossPower} | HỆ: {duel.State.BossElement.Value})",
+            string familiarityTag = state.Knowledge.HasSeenBossSkill(duel.State.BossSkillId) ? "ĐÃ GẶP" : "CHIÊU MỚI";
+
+            GUI.Label(new Rect(bannerRect.x + 14, bannerRect.y + 8, bannerRect.width - 380, 26),
+                $"⚔ PHASE 2: DUEL MODE — VÒNG {duel.State.Round}  |  BOSS: [{bossSkillName.ToUpperInvariant()}] (UY LỰC {duel.State.BossPower} | HỆ {duel.State.BossElement.Value} · {familiarityTag})",
                 _headerStyle);
-            GUI.Label(new Rect(arena.x + 36, arena.y + 46, arena.width - 70, 22),
+            GUI.Label(new Rect(bannerRect.x + 14, bannerRect.y + 38, bannerRect.width - 380, 28),
                 string.IsNullOrEmpty(_lastDuelRoundNotice)
-                    ? "Chọn 1 trong 3 thẻ chiêu Clash bên dưới để đối đầu trực diện với tuyệt kỹ của Boss!"
+                    ? "Quan sát Hệ & Uy lực của Boss để chọn 1 trong 3 thẻ Clash — bấm [💡 Gợi ý] nếu cần cảnh báo Thắng/Thua!"
                     : _lastDuelRoundNotice,
                 _boldLabelStyle);
 
-            int frameIdx = Mathf.FloorToInt(Time.time * 6f) % 4;
+            string hintBtnText = _showDuelHint ? "💡 GỢI Ý: BẬT [H]" : "💡 GỢI Ý: TẮT [H]";
+            if (GUI.Button(new Rect(bannerRect.xMax - 352, bannerRect.y + 18, 168, 38),
+                hintBtnText, _showDuelHint ? _centerActiveBtnStyle : _centerBtnStyle))
+            {
+                ToggleDuelHint();
+            }
+
+            int knownCount = state.Knowledge?.KnownBossSkillCount ?? 0;
+            if (GUI.Button(new Rect(bannerRect.xMax - 176, bannerRect.y + 18, 164, 38),
+                $"📖 CHIÊU ĐÃ HỌC ({knownCount})", _showLearnedSkillsModal ? _centerActiveBtnStyle : _centerBtnStyle))
+            {
+                ToggleLearnedSkillsModal();
+            }
+
+            int frameIdx = Mathf.FloorToInt(Time.unscaledTime * 6f) % 4;
             UnitAnimState pAnimState = (_duelVfxTimer > 0f && _duelVfxOnBoss) ? UnitAnimState.Attack : UnitAnimState.Idle;
             UnitAnimState bAnimState = (_duelVfxTimer > 0f && !_duelVfxOnBoss) ? UnitAnimState.Attack : UnitAnimState.Idle;
 
             var pFrames = ArtCatalog.GetUnitAnimFrames(player.Definition.Id, player.IsAlive ? pAnimState : UnitAnimState.Death);
             var bFrames = ArtCatalog.GetUnitAnimFrames(boss.Definition.Id, boss.IsAlive ? bAnimState : UnitAnimState.Death);
 
-            Rect pRect = new Rect(arena.x + 80, arena.y + 135, 190, 190);
-            Rect bRect = new Rect(arena.xMax - 290, arena.y + 115, 220, 220);
+            Rect pRect = new Rect(arena.x + 95, arena.y + 110, 185, 185);
+            float bossSize = boss.SizeX > 1 ? 235f : 210f;
+            Rect bRect = new Rect(arena.xMax - 95 - bossSize, arena.y + 92, bossSize, bossSize);
 
             DrawSpriteOnGui(pRect, pFrames[frameIdx % pFrames.Length], flipX: false);
             DrawSpriteOnGui(bRect, bFrames[frameIdx % bFrames.Length], flipX: true);
             DrawDuelHealth(new Rect(pRect.x, pRect.yMax, pRect.width, 22), player);
             DrawDuelHealth(new Rect(bRect.x, bRect.yMax, bRect.width, 22), boss);
-            DrawRunKnowledge(new Rect(pRect.x, pRect.yMax + 24, 260, 22), state.Knowledge);
+            DrawRunKnowledge(new Rect(pRect.x, pRect.yMax + 24, 290, 20), state.Knowledge);
+
+            string pStatus = FormatUnitStatusTags(player);
+            if (!string.IsNullOrEmpty(pStatus))
+            {
+                GUI.Box(new Rect(pRect.x, pRect.yMax + 44, pRect.width, 20), pStatus.Trim(' ', '·'), _badgeInfoStyle);
+            }
+            string bStatus = FormatUnitStatusTags(boss);
+            if (!string.IsNullOrEmpty(bStatus))
+            {
+                GUI.Box(new Rect(bRect.x, bRect.yMax + 26, bRect.width, 20), bStatus.Trim(' ', '·'), _badgeDrawStyle);
+            }
 
             if (_duelVfxTimer > 0f)
             {
                 var vfxFrames = ArtCatalog.GetVfxFrames(_activeDuelVfxId);
-                int vIdx = Mathf.Clamp(Mathf.FloorToInt((1f - _duelVfxTimer / 0.65f) * vfxFrames.Length), 0, vfxFrames.Length - 1);
+                float normalized = 1f - (_duelVfxTimer / 0.70f);
+                int hitLoop = _duelFinisherHitsShown > 1
+                    ? Mathf.FloorToInt(normalized * _duelFinisherHitsShown * vfxFrames.Length) % vfxFrames.Length
+                    : Mathf.Clamp(Mathf.FloorToInt(normalized * vfxFrames.Length), 0, vfxFrames.Length - 1);
                 Rect vRect = _duelVfxOnBoss ? bRect : pRect;
-                DrawSpriteOnGui(vRect, vfxFrames[vIdx], flipX: false);
+                DrawSpriteOnGui(vRect, vfxFrames[hitLoop], flipX: false);
+
+                if (_duelVfxOnBoss && _duelFinisherHitsShown > 1)
+                {
+                    int currentHit = Mathf.Clamp(Mathf.FloorToInt(normalized * _duelFinisherHitsShown) + 1, 1, _duelFinisherHitsShown);
+                    string pips = new string('◆', currentHit) + new string('◇', _duelFinisherHitsShown - currentHit);
+                    GUI.Box(new Rect(UiW * 0.5f - 150, arena.y + 115, 300, 30),
+                        $"⚔ KẾT LIỄU LIÊN HOÀN: {pips} ({currentHit}/{_duelFinisherHitsShown})", _badgeWinStyle);
+                }
+            }
+
+            if (_showDuelHint)
+            {
+                Rect hintStrip = new Rect(arena.x + 16, arena.yMax - 208f, arena.width - 32, 30f);
+                GUI.Box(hintStrip, GUIContent.none, _subPanelStyle);
+                var learnedCounters = state.Knowledge.GetWonClashPlayerSkills(duel.State.BossSkillId);
+                string counterSummary;
+                if (learnedCounters.Count > 0)
+                {
+                    var displayNames = new List<string>();
+                    for (int i = 0; i < learnedCounters.Count; i++)
+                    {
+                        displayNames.Add(_session.Skills.TryGet(learnedCounters[i], out var sk) ? sk.DisplayName : learnedCounters[i]);
+                    }
+                    counterSummary = $"★ GỢI Ý & KÝ ỨC ĐÃ HỌC: Đã từng khắc chế [{bossSkillName}] bằng: {string.Join(", ", displayNames)}";
+                }
+                else
+                {
+                    counterSummary = $"💡 GỢI Ý ĐANG BẬT: Cảnh báo Thắng/Hòa/Thua đã mở · Chưa ghi nhớ khắc chế cho [{bossSkillName}] (Thắng 1 lần để lưu vào Sổ tay!)";
+                }
+                GUI.Label(new Rect(hintStrip.x + 12, hintStrip.y + 4, hintStrip.width - 24, 22), counterSummary, _boldLabelStyle);
             }
 
             var options = duel.GetOptions();
-            float cardW = (arena.width - 80f) / Mathf.Max(1, options.Count);
-            float cardY = arena.yMax - 175f;
+            float cardW = (arena.width - 72f) / Mathf.Max(1, options.Count);
+            float cardY = arena.yMax - 172f;
 
             for (int i = 0; i < options.Count; i++)
             {
                 var opt = options[i];
-                Rect card = new Rect(arena.x + 20 + i * (cardW + 20f), cardY, cardW, 155f);
+                Rect card = new Rect(arena.x + 16 + i * (cardW + 20f), cardY, cardW, 158f);
                 GUI.Box(card, GUIContent.none, _panelStyle);
 
-                GUI.Label(new Rect(card.x + 12, card.y + 10, card.width - 24, 24),
+                GUI.Label(new Rect(card.x + 12, card.y + 8, card.width - 24, 24),
                     $"[{i + 1}] {opt.DisplayName}", _headerStyle);
 
                 int basePower = opt.Prediction.PlayerPower - opt.Prediction.Bonus;
-                GUI.Label(new Rect(card.x + 12, card.y + 36, card.width - 24, 40),
-                    $"Uy lực gốc: {basePower}  +  Khắc chế: {opt.Prediction.Bonus}\n⇒ TỔNG UY LỰC: {opt.Prediction.PlayerPower}  (so với Boss {opt.Prediction.BossPower})",
-                    _labelStyle);
+                string skillElement = _session.Skills.TryGet(opt.SkillId, out var pSkill)
+                    ? pSkill.Element.Value
+                    : "Physical";
 
-                GUIStyle badgeSt = opt.Prediction.Result == ClashResult.Win
-                    ? _badgeWinStyle
-                    : (opt.Prediction.Result == ClashResult.Draw ? _badgeDrawStyle : _badgeLoseStyle);
-                string winLabel = state.Knowledge.HasWonClash(duel.State.BossSkillId, opt.SkillId)
-                    ? "ĐÃ TỪNG KHẮC CHẾ"
-                    : "DỰ BÁO: THẮNG";
-                string badgeText = opt.Prediction.Result == ClashResult.Win
-                    ? $"{winLabel} (+{duel.Definition.FinisherCount} ĐÒN KẾT LIỄU)"
-                    : (opt.Prediction.Result == ClashResult.Draw
-                        ? "DỰ BÁO: HÒA (MỖI BÊN -10%)"
-                        : "DỰ BÁO: THUA (ĂN ĐÒN BOSS)");
-                GUI.Box(new Rect(card.x + 12, card.y + 82, card.width - 24, 26), badgeText, badgeSt);
+                if (_showDuelHint)
+                {
+                    string bonusSign = opt.Prediction.Bonus >= 0 ? $"+{opt.Prediction.Bonus}" : opt.Prediction.Bonus.ToString();
+                    GUI.Label(new Rect(card.x + 12, card.y + 34, card.width - 24, 42),
+                        $"Hệ: {skillElement}  |  Uy lực gốc: {basePower}  ({bonusSign} khắc chế)\n⇒ TỔNG UY LỰC: {opt.Prediction.PlayerPower}  (so với Boss {opt.Prediction.BossPower})",
+                        _labelStyle);
 
-                if (GUI.Button(new Rect(card.x + 12, card.y + 114, card.width - 24, 30),
-                    "⚡ TUNG CHIÊU ĐỐI KHÁNG", _activeBtnStyle))
+                    GUIStyle badgeSt = opt.Prediction.Result == ClashResult.Win
+                        ? _badgeWinStyle
+                        : (opt.Prediction.Result == ClashResult.Draw ? _badgeDrawStyle : _badgeLoseStyle);
+                    bool learnedWin = state.Knowledge.HasWonClash(duel.State.BossSkillId, opt.SkillId);
+                    string winLabel = learnedWin ? "★ ĐÃ HỌC KHẮC CHẾ" : "DỰ BÁO: THẮNG";
+                    string badgeText = opt.Prediction.Result == ClashResult.Win
+                        ? $"{winLabel} (+{duel.Definition.FinisherCount} ĐÒN KẾT LIỄU)"
+                        : (opt.Prediction.Result == ClashResult.Draw
+                            ? "DỰ BÁO: HÒA (MỖI BÊN -10%)"
+                            : "DỰ BÁO: THUA (ĂN ĐÒN BOSS)");
+                    GUI.Box(new Rect(card.x + 12, card.y + 80, card.width - 24, 28), badgeText, badgeSt);
+                }
+                else
+                {
+                    GUI.Label(new Rect(card.x + 12, card.y + 36, card.width - 24, 38),
+                        $"Hệ: {skillElement}  |  Uy lực gốc: {basePower}\n(Tự phán đoán khắc chế so với chiêu Boss {duel.State.BossPower})",
+                        _labelStyle);
+
+                    GUI.Box(new Rect(card.x + 12, card.y + 80, card.width - 24, 28),
+                        "🔒 ẨN CẢNH BÁO — Bấm [💡 GỢI Ý] để xem", _badgeInfoStyle);
+                }
+
+                if (GUI.Button(new Rect(card.x + 12, card.y + 114, card.width - 24, 32),
+                    $"⚡ TUNG CHIÊU ĐỐI KHÁNG [{i + 1}]", _centerActiveBtnStyle))
                 {
                     _session.TryExecute(ActionRequest.ClashSkill(player.Id, opt.SkillId));
                 }
             }
         }
 
+        private void DrawPauseModal()
+        {
+            DrawRect(new Rect(0, 0, UiW, UiH), new Color(0.01f, 0.01f, 0.03f, 0.72f));
+            Rect modal = new Rect(UiW * 0.5f - 220f, UiH * 0.5f - 250f, 440f, 500f);
+            GUI.Box(modal, GUIContent.none, _panelStyle);
+            DrawRect(new Rect(modal.x, modal.y, modal.width, 3), new Color(0.90f, 0.76f, 0.35f, 0.95f));
+
+            GUI.Label(new Rect(modal.x + 20, modal.y + 14, modal.width - 40, 28), "⏸ TẠM DỪNG TRÒ CHƠI", _headerStyle);
+
+            string stageName = _session?.State?.Stage?.DisplayName ?? _currentStageId;
+            int deaths = _session?.Knowledge?.Deaths ?? 0;
+            int knownSkills = _session?.Knowledge?.KnownBossSkillCount ?? 0;
+            GUI.Label(new Rect(modal.x + 20, modal.y + 44, modal.width - 40, 24),
+                $"{stageName}  ·  Vòng lặp: {deaths}  |  Chiêu đã biết: {knownSkills}", _mutedLabelStyle);
+
+            float bx = modal.x + 28f;
+            float bw = modal.width - 56f;
+            float y = modal.y + 80f;
+
+            if (GUI.Button(new Rect(bx, y, bw, 40), "▶  TIẾP TỤC CHƠI [ESC]", _centerActiveBtnStyle))
+            {
+                TogglePause();
+            }
+            y += 48f;
+
+            if (GUI.Button(new Rect(bx, y, bw, 36), $"📖  SỔ TAY CHIÊU ĐÃ HỌC ({knownSkills}) [K]", _centerBtnStyle))
+            {
+                ToggleLearnedSkillsModal();
+            }
+            y += 44f;
+
+            if (GUI.Button(new Rect(bx, y, bw, 36), "❓  HƯỚNG DẪN CHƠI & PHÍM TẮT", _centerBtnStyle))
+            {
+                ToggleTutorialModal();
+            }
+            y += 44f;
+
+            bool canRewind = _screenState == AppScreenState.Playing && _session?.State?.Snapshots?.CanRewind == true;
+            bool prevEnabled = GUI.enabled;
+            GUI.enabled = prevEnabled && canRewind;
+            if (GUI.Button(new Rect(bx, y, bw, 36), "↺  TUA NGƯỢC CHECKPOINT [R]", _centerBtnStyle))
+            {
+                SetPaused(false);
+                ExecuteRewind();
+            }
+            GUI.enabled = prevEnabled;
+            y += 44f;
+
+            if (GUI.Button(new Rect(bx, y, bw, 36), "↻  CHƠI LẠI ẢI NÀY (GIỮ KÝ ỨC CHIÊU)", _centerBtnStyle))
+            {
+                LoadStage(_currentStageId, playIntro: false);
+            }
+            y += 44f;
+
+            if (GUI.Button(new Rect(bx, y, bw, 36), "↻  CHƠI LẠI TỪ ĐẦU (RESET KÝ ỨC)", _centerBtnStyle))
+            {
+                ResetRun();
+            }
+            y += 44f;
+
+            if (GUI.Button(new Rect(bx, y, bw, 36), "⚙  CÀI ĐẶT (SETTINGS)", _centerBtnStyle))
+            {
+                CloseAllModals();
+                _showSettingsModal = true;
+                PlaySfx("ui_select");
+            }
+            y += 44f;
+
+            if (GUI.Button(new Rect(bx, y, bw, 36), "🏠  VỀ MENU CHÍNH", _centerBtnStyle))
+            {
+                EnterMainMenu();
+            }
+        }
+
+        private void DrawLearnedSkillsModal()
+        {
+            DrawRect(new Rect(0, 0, UiW, UiH), new Color(0.01f, 0.01f, 0.03f, 0.72f));
+            Rect modal = new Rect(UiW * 0.5f - 370f, 64f, 740f, 592f);
+            GUI.Box(modal, GUIContent.none, _panelStyle);
+            DrawRect(new Rect(modal.x, modal.y, modal.width, 3), new Color(0.55f, 0.36f, 0.85f, 0.95f));
+
+            GUI.Label(new Rect(modal.x + 20, modal.y + 14, 560, 28),
+                "📖 SỔ TAY KÝ ỨC VÒNG LẶP — CHIÊU ĐÃ HỌC", _headerStyle);
+            if (GUI.Button(new Rect(modal.xMax - 92, modal.y + 12, 74, 28), "Đóng", _centerActiveBtnStyle))
+            {
+                _showLearnedSkillsModal = false;
+                PlaySfx("ui_select");
+            }
+
+            var knowledge = _session?.Knowledge;
+            int deaths = knowledge?.Deaths ?? 0;
+            var seenBossSkills = knowledge != null ? knowledge.GetSeenBossSkillIds() : Array.Empty<string>();
+            GUI.Label(new Rect(modal.x + 20, modal.y + 44, modal.width - 40, 24),
+                $"Số vòng lặp tử vong: {deaths}   |   Tuyệt kỹ Boss đã chứng kiến: {seenBossSkills.Count}   (Ký ức được giữ khi Rewind & chuyển ải)",
+                _boldLabelStyle);
+
+            var wandererSkills = UnitCatalog.CreateWanderer().SkillIds;
+            float bossSectionH = Mathf.Max(66f, seenBossSkills.Count * 66f);
+            float contentH = 44f + bossSectionH + 46f + wandererSkills.Count * 54f + 24f;
+
+            Rect viewRect = new Rect(modal.x + 16, modal.y + 76, modal.width - 32, modal.height - 134);
+            Rect contentRect = new Rect(0, 0, viewRect.width - 20, contentH);
+            _codexScroll = GUI.BeginScrollView(viewRect, _codexScroll, contentRect);
+
+            float y = 6f;
+            GUI.Label(new Rect(4, y, contentRect.width - 8, 24), "1. TUYỆT KỸ BOSS ĐÃ GẶP & KHẮC CHẾ ĐÃ HỌC:", _headerStyle);
+            y += 28f;
+
+            if (seenBossSkills.Count == 0)
+            {
+                GUI.Box(new Rect(4, y, contentRect.width - 8, 56), GUIContent.none, _subPanelStyle);
+                GUI.Label(new Rect(16, y + 10, contentRect.width - 32, 40),
+                    "Chưa ghi nhận chiêu thức nào của Boss trong lượt chơi này.\nHãy giao chiến trên bàn cờ hoặc bước vào Phase 2 Duel — mọi chiêu Boss tung ra và chiêu thắng Clash sẽ tự động lưu tại đây!",
+                    _mutedLabelStyle);
+                y += 66f;
+            }
+            else
+            {
+                for (int i = 0; i < seenBossSkills.Count; i++)
+                {
+                    string bId = seenBossSkills[i];
+                    _session.Skills.TryGet(bId, out var bSk);
+                    string bName = bSk != null ? bSk.DisplayName : bId;
+                    string bElem = bSk != null ? bSk.Element.Value : "?";
+                    int bClash = bSk != null ? bSk.Power : 0;
+                    int bBoard = bSk != null ? bSk.BoardPower : 0;
+
+                    var wonCounters = knowledge.GetWonClashPlayerSkills(bId);
+                    string counterText;
+                    if (wonCounters.Count > 0)
+                    {
+                        var names = new List<string>();
+                        for (int j = 0; j < wonCounters.Count; j++)
+                        {
+                            names.Add(_session.Skills.TryGet(wonCounters[j], out var pSk) ? pSk.DisplayName : wonCounters[j]);
+                        }
+                        counterText = "★ Khắc chế đã thắng Clash: " + string.Join(", ", names);
+                    }
+                    else
+                    {
+                        counterText = "• Chưa tìm ra chiêu khắc chế trong Duel (Thắng Clash 1 lần để ghi nhớ).";
+                    }
+
+                    Rect row = new Rect(4, y, contentRect.width - 8, 58);
+                    GUI.Box(row, GUIContent.none, _subPanelStyle);
+                    GUI.Label(new Rect(row.x + 12, row.y + 6, row.width - 24, 22),
+                        $"• {bName}   [Hệ: {bElem} | Uy lực Duel: {bClash} | Sát thương Bàn cờ: {bBoard}]", _boldLabelStyle);
+                    GUI.Label(new Rect(row.x + 12, row.y + 30, row.width - 24, 22), counterText,
+                        wonCounters.Count > 0 ? _headerStyle : _mutedLabelStyle);
+                    y += 66f;
+                }
+            }
+
+            y += 10f;
+            GUI.Label(new Rect(4, y, contentRect.width - 8, 24), "2. BỘ KỸ NĂNG CỦA KẺ LANG THANG (PHASE 1 & PHASE 2 DUEL):", _headerStyle);
+            y += 28f;
+
+            for (int i = 0; i < wandererSkills.Count; i++)
+            {
+                if (!_session.Skills.TryGet(wandererSkills[i], out var sk)) continue;
+                Rect row = new Rect(4, y, contentRect.width - 8, 48);
+                GUI.Box(row, GUIContent.none, _subPanelStyle);
+                string clashTag = sk.IsClashSkill ? $"Uy lực Clash: {sk.Power}" : "Chỉ bàn cờ";
+                GUI.Label(new Rect(row.x + 12, row.y + 6, row.width - 24, 20),
+                    $"✦ {sk.DisplayName}   [Hệ: {sk.Element.Value} | {clashTag}]", _boldLabelStyle);
+                GUI.Label(new Rect(row.x + 12, row.y + 25, row.width - 24, 18),
+                    $"Tầm đánh: {sk.RangeMin}–{sk.RangeMax} ô  ·  Sát thương bàn cờ: {sk.BoardPower}  ·  Hồi chiêu: {sk.CooldownTurns} lượt",
+                    _mutedLabelStyle);
+                y += 54f;
+            }
+
+            GUI.EndScrollView();
+
+            if (GUI.Button(new Rect(modal.x + 20, modal.yMax - 44, modal.width - 40, 32),
+                "Đóng Sổ Tay [ESC / K]", _centerActiveBtnStyle))
+            {
+                _showLearnedSkillsModal = false;
+                PlaySfx("ui_select");
+            }
+        }
+
         private void DrawRunKnowledge(Rect rect, IRunKnowledge knowledge)
         {
+            if (knowledge == null) return;
             GUI.Label(rect, $"Vòng lặp: {knowledge.Deaths}  |  Chiêu đã biết: {knowledge.KnownBossSkillCount}", _labelStyle);
         }
 
@@ -1343,110 +2496,102 @@ namespace BTH.Game
 
         private void DrawPhase2TransitionOverlay()
         {
-            float alpha = Mathf.Clamp01(_transitionTimer);
-            DrawRect(new Rect(0, 0, UiW, UiH), new Color(0.55f, 0.08f, 0.12f, alpha * 0.65f));
-            var st = new GUIStyle(_headerStyle)
+            float elapsed = TransitionDuration - _transitionTimer;
+            Color overlayCol;
+            string caption;
+            if (elapsed < 0.45f)
             {
-                fontSize = 30,
-                alignment = TextAnchor.MiddleCenter
-            };
-            st.normal.textColor = new Color(1f, 0.88f, 0.42f, 1f);
-            GUI.Label(new Rect(0, UiH * 0.4f, UiW, 80),
-                "⚔ BOSS DƯỚI 70% HP — PHASE 2: DUEL MODE! ⚔", st);
-        }
-
-        private void DrawDialogueOverlay()
-        {
-            var node = _dialogueRunner.Current;
-            if (node == null) return;
-
-            float boxW = Mathf.Min(820f, UiW - 320f);
-            Rect box = new Rect(295, UiH - 220, boxW, 204);
-            GUI.Box(box, GUIContent.none, _panelStyle);
-
-            bool isNarration = node.Speaker == DialogueCatalog.Narrator;
-            if (!isNarration)
-            {
-                Rect port = new Rect(box.x + 14, box.y + 14, 136, 136);
-                DrawRect(port, new Color(0.90f, 0.76f, 0.35f, 1f));
-                GUI.DrawTexture(new Rect(port.x + 3, port.y + 3, port.width - 6, port.height - 6),
-                    ArtCatalog.GetPortrait(node.Speaker), ScaleMode.ScaleToFit);
+                float flash = 0.65f * (elapsed / 0.45f);
+                overlayCol = new Color(0.60f, 0.08f, 0.12f, flash);
+                caption = "⚔ BOSS DƯỚI 70% HP! ⚔";
             }
-
-            float textX = box.x + (isNarration ? 18 : 165);
-            float textW = box.xMax - textX - 16;
-            string title = isNarration ? "DẪN TRUYỆN" : $"ĐỐI THOẠI — {node.Speaker.ToUpperInvariant()}";
-            GUI.Label(new Rect(textX, box.y + 14, textW, 26), title, _headerStyle);
-
-            var dlgTextStyle = new GUIStyle(_labelStyle) { fontSize = 14 };
-            float textHeight = node.Choices.Count == 0 ? 104 : 74;
-            GUI.Label(new Rect(textX, box.y + 44, textW, textHeight), node.Text, dlgTextStyle);
-
-            if (node.Choices.Count > 0)
+            else if (elapsed < 0.90f)
             {
-                for (int i = 0; i < node.Choices.Count; i++)
-                {
-                    var ch = node.Choices[i];
-                    if (GUI.Button(new Rect(box.x + 165, box.y + 120 + i * 36, box.width - 185, 32),
-                        $"➤ {ch.Text}", _activeBtnStyle))
-                    {
-                        _dialogueRunner.Choose(i);
-                        CheckDialogueFinished();
-                        PlaySfx("ui_confirm");
-                    }
-                }
+                float fadeOut = Mathf.Clamp01((elapsed - 0.45f) / 0.35f);
+                overlayCol = new Color(0.02f, 0.02f, 0.04f, Mathf.Lerp(0.55f, 0.96f, fadeOut));
+                caption = "⚔ PHASE 2: DUEL MODE! ⚔";
             }
             else
             {
-                if (GUI.Button(new Rect(box.xMax - 210, box.yMax - 44, 190, 32),
-                    "Tiếp tục [Space] ▶", _activeBtnStyle))
-                {
-                    _dialogueRunner.Advance();
-                    CheckDialogueFinished();
-                    PlaySfx("ui_confirm");
-                }
+                float fadeIn = 1f - Mathf.Clamp01((elapsed - 0.90f) / 0.45f);
+                overlayCol = new Color(0.02f, 0.02f, 0.04f, fadeIn * 0.96f);
+                caption = "⚔ ĐẤU KỸ CLASH 1V1! ⚔";
             }
+
+            DrawRect(new Rect(0, 0, UiW, UiH), overlayCol);
+            GUI.Label(new Rect(0, UiH * 0.4f, UiW, 80), caption, _phase2BannerStyle);
         }
 
         private void DrawStageResultModal()
         {
             var res = _session.State.Result;
-            Rect modal = new Rect(UiW * 0.5f - 180, UiH * 0.5f - 110, 480, 220);
+            DrawRect(new Rect(0, 0, UiW, UiH), new Color(0.01f, 0.01f, 0.03f, 0.58f));
+            Rect modal = new Rect(UiW * 0.5f - 270f, UiH * 0.5f - 125f, 540f, 250f);
             GUI.Box(modal, GUIContent.none, _panelStyle);
+            DrawRect(new Rect(modal.x, modal.y, modal.width, 3), new Color(0.90f, 0.76f, 0.35f, 0.95f));
 
             string title;
             string desc;
-            if (res == StageResult.Victory || res == StageResult.EndingA || res == StageResult.EndingB)
+            bool isEnding = res == StageResult.EndingA || res == StageResult.EndingB;
+            if (res == StageResult.EndingA)
             {
-                title = res == StageResult.EndingA
-                    ? "★ KẾT CỤC A: LỜI NÓI DỐI VĨNH HẰNG ★"
-                    : (res == StageResult.EndingB
-                        ? "★ KẾT CỤC B: TỘI ĐỒ ẨN CƯ ★"
-                        : "★ CHIẾN THẮNG MÀN CHƠI (VICTORY) ★");
-                desc = res == StageResult.EndingA
-                    ? "Kẻ Lang Thang buông gươm và chết dưới nhát kiếm của Eosphoros. Lời nguyền thời gian tan biến."
-                    : "Bạn đã vượt qua thử thách giải đố bàn cờ và hạ gục Boss trong màn Duel Phase 2!";
+                title = "★ KẾT CỤC A: LỜI NÓI DỐI VĨNH HẰNG ★";
+                desc = "Kẻ Lang Thang buông gươm và gục ngã dưới nhát kiếm của Eosphoros. Lời nguyền thời gian tan biến; thế gian tiếp tục tôn thờ một lời nói dối hoàn hảo.";
+            }
+            else if (res == StageResult.EndingB)
+            {
+                title = "★ KẾT CỤC B: TỘI ĐỒ ẨN CƯ ★";
+                desc = "Kẻ Lang Thang hạ sát Eosphoros trong hầm sâu để dập tắt lời nói dối. Vòng lặp thời gian khép lại, hắn mang danh phản đồ và lặng lẽ bước vào kiếp ẩn cư.";
+            }
+            else if (res == StageResult.Victory)
+            {
+                title = "★ CHIẾN THẮNG MÀN CHƠI (VICTORY) ★";
+                desc = "Bạn đã vượt qua thử thách giải đố bàn cờ và hạ gục Boss trong màn Duel Phase 2! Ký ức vòng lặp sẽ tiếp tục theo bạn sang ải tiếp theo.";
             }
             else
             {
                 title = "☠ THẤT BẠI — LỜI NGUYỀN THỜI GIAN KÍCH HOẠT ☠";
-                desc = "Kẻ Lang Thang đã gục ngã, nhưng ký ức về tuyệt kỹ của Boss vẫn còn nguyên. Hãy Tua Ngược Thời Gian (Rewind)!";
+                desc = "Kẻ Lang Thang đã gục ngã, nhưng ký ức về tuyệt kỹ Boss và khắc chế vẫn còn nguyên. Hãy Tua Ngược Thời Gian (Rewind) hoặc thử lại!";
             }
 
             GUI.Label(new Rect(modal.x + 20, modal.y + 18, modal.width - 40, 28), title, _headerStyle);
-            GUI.Label(new Rect(modal.x + 20, modal.y + 54, modal.width - 40, 65), desc, _boldLabelStyle);
+            GUI.Label(new Rect(modal.x + 20, modal.y + 52, modal.width - 40, 82), desc, _boldLabelStyle);
 
-            if (GUI.Button(new Rect(modal.x + 20, modal.y + 130, 210, 36), "↺ TUA NGƯỢC (REWIND)", _activeBtnStyle))
+            if (isEnding)
             {
-                ExecuteRewind();
+                if (GUI.Button(new Rect(modal.x + 20, modal.y + 150, 240, 40), "🏠 VỀ MENU CHÍNH", _centerActiveBtnStyle))
+                {
+                    EnterMainMenu();
+                }
+                if (GUI.Button(new Rect(modal.x + 280, modal.y + 150, 240, 40), "↻ CHƠI LẠI TỪ ẢI 1", _centerBtnStyle))
+                {
+                    ResetRun();
+                }
+            }
+            else
+            {
+                if (GUI.Button(new Rect(modal.x + 20, modal.y + 146, 160, 38), "↺ TUA NGƯỢC", _centerActiveBtnStyle))
+                {
+                    ExecuteRewind();
+                }
+
+                string nextStage = GetNextStageId(_currentStageId);
+                if (GUI.Button(new Rect(modal.x + 192, modal.y + 146, 174, 38),
+                    res == StageResult.Victory ? $"Sang {nextStage.ToUpperInvariant()} ▶" : "↻ Chơi lại màn này",
+                    res == StageResult.Victory ? _centerActiveBtnStyle : _centerBtnStyle))
+                {
+                    LoadStage(res == StageResult.Victory ? nextStage : _currentStageId, playIntro: res == StageResult.Victory);
+                }
+
+                if (GUI.Button(new Rect(modal.x + 378, modal.y + 146, 142, 38), "🏠 Menu Chính", _centerBtnStyle))
+                {
+                    EnterMainMenu();
+                }
             }
 
-            string nextStage = GetNextStageId(_currentStageId);
-            if (GUI.Button(new Rect(modal.x + 250, modal.y + 130, 210, 36),
-                res == StageResult.Victory ? $"Sang {nextStage.ToUpperInvariant()} ▶" : "⟳ Chơi lại màn này", _btnStyle))
-            {
-                LoadStage(res == StageResult.Victory ? nextStage : _currentStageId);
-            }
+            GUI.Label(new Rect(modal.x + 20, modal.y + 202, modal.width - 40, 24),
+                $"Ký ức vòng lặp hiện tại · Vòng lặp: {_session.Knowledge.Deaths}  |  Chiêu Boss đã biết: {_session.Knowledge.KnownBossSkillCount}",
+                _mutedLabelStyle);
         }
 
         private static string GetNextStageId(string current)
@@ -1463,61 +2608,96 @@ namespace BTH.Game
 
         private void DrawSettingsModal()
         {
-            Rect modal = new Rect(UiW * 0.5f - 180, UiH * 0.5f - 155, 420, 310);
+            DrawRect(new Rect(0, 0, UiW, UiH), new Color(0.01f, 0.01f, 0.03f, 0.62f));
+            Rect modal = new Rect(UiW * 0.5f - 230f, UiH * 0.5f - 210f, 460f, 420f);
             GUI.Box(modal, GUIContent.none, _panelStyle);
+            DrawRect(new Rect(modal.x, modal.y, modal.width, 3), new Color(0.90f, 0.76f, 0.35f, 0.9f));
 
-            GUI.Label(new Rect(modal.x + 16, modal.y + 12, 320, 24), "⚙ CÀI ĐẶT (SETTINGS)", _headerStyle);
-            if (GUI.Button(new Rect(modal.xMax - 80, modal.y + 10, 66, 24), "Đóng", _activeBtnStyle))
+            GUI.Label(new Rect(modal.x + 16, modal.y + 12, 340, 24), "⚙ CÀI ĐẶT (SETTINGS)", _headerStyle);
+            if (GUI.Button(new Rect(modal.xMax - 80, modal.y + 10, 66, 24), "Đóng", _centerActiveBtnStyle))
             {
                 _options.SaveToPrefs();
+                _options.ApplyDisplaySettings();
                 _showSettingsModal = false;
             }
 
             float y = modal.y + 48;
             GUI.Label(new Rect(modal.x + 18, y, 220, 20), $"Âm lượng tổng (Master): {Mathf.RoundToInt(_options.MasterVolume * 100)}%", _boldLabelStyle);
-            _options.MasterVolume = GUI.HorizontalSlider(new Rect(modal.x + 240, y + 4, 150, 18), _options.MasterVolume, 0f, 1f);
-            y += 32;
+            _options.MasterVolume = GUI.HorizontalSlider(new Rect(modal.x + 245, y + 4, 190, 18), _options.MasterVolume, 0f, 1f);
+            y += 30;
 
             GUI.Label(new Rect(modal.x + 18, y, 220, 20), $"Nhạc nền (BGM): {Mathf.RoundToInt(_options.BgmVolume * 100)}%", _boldLabelStyle);
-            _options.BgmVolume = GUI.HorizontalSlider(new Rect(modal.x + 240, y + 4, 150, 18), _options.BgmVolume, 0f, 1f);
-            y += 32;
+            _options.BgmVolume = GUI.HorizontalSlider(new Rect(modal.x + 245, y + 4, 190, 18), _options.BgmVolume, 0f, 1f);
+            y += 30;
 
             GUI.Label(new Rect(modal.x + 18, y, 220, 20), $"Hiệu ứng (SFX): {Mathf.RoundToInt(_options.SfxVolume * 100)}%", _boldLabelStyle);
-            _options.SfxVolume = GUI.HorizontalSlider(new Rect(modal.x + 240, y + 4, 150, 18), _options.SfxVolume, 0f, 1f);
-            y += 36;
+            _options.SfxVolume = GUI.HorizontalSlider(new Rect(modal.x + 245, y + 4, 190, 18), _options.SfxVolume, 0f, 1f);
+            y += 34;
 
-            GUI.Label(new Rect(modal.x + 18, y, 180, 22), "Tốc độ hoạt ảnh (Speed):", _boldLabelStyle);
+            GUI.Label(new Rect(modal.x + 18, y, 180, 22), "Tốc độ hoạt ảnh:", _boldLabelStyle);
             float[] speeds = { 1.0f, 1.5f, 2.0f };
             for (int i = 0; i < speeds.Length; i++)
             {
                 float sp = speeds[i];
-                if (GUI.Button(new Rect(modal.x + 205 + i * 62, y - 2, 58, 24), $"x{sp:0.#}",
-                    Mathf.Approximately(_options.AnimationSpeed, sp) ? _activeBtnStyle : _btnStyle))
+                if (GUI.Button(new Rect(modal.x + 205 + i * 76, y - 2, 70, 24), $"x{sp:0.#}",
+                    Mathf.Approximately(_options.AnimationSpeed, sp) ? _centerActiveBtnStyle : _centerBtnStyle))
                 {
                     _options.AnimationSpeed = sp;
                 }
             }
             y += 36;
 
-            _options.ShowGridOverlay = GUI.Toggle(new Rect(modal.x + 18, y, 360, 22),
+            GUI.Label(new Rect(modal.x + 18, y, 160, 22), "Độ phân giải:", _boldLabelStyle);
+            for (int i = 0; i < GameOptionsModel.SupportedResolutions.Length; i++)
+            {
+                var (rw, rh) = GameOptionsModel.SupportedResolutions[i];
+                if (GUI.Button(new Rect(modal.x + 165 + i * 94, y - 2, 88, 24), $"{rw}×{rh}",
+                    _options.ResolutionIndex == i ? _centerActiveBtnStyle : _centerBtnStyle))
+                {
+                    _options.ResolutionIndex = i;
+                }
+            }
+            y += 34;
+
+            _options.Fullscreen = GUI.Toggle(new Rect(modal.x + 18, y, 400, 22),
+                _options.Fullscreen, "  Toàn màn hình (Fullscreen — áp dụng trong bản Build)");
+            y += 28;
+
+            _options.ShowGridOverlay = GUI.Toggle(new Rect(modal.x + 18, y, 400, 22),
                 _options.ShowGridOverlay, "  Hiển thị lưới ô cờ chiến thuật (Grid Overlay)");
             y += 28;
 
-            _options.ShowDangerZoneWarning = GUI.Toggle(new Rect(modal.x + 18, y, 360, 22),
+            _options.ShowDangerZoneWarning = GUI.Toggle(new Rect(modal.x + 18, y, 400, 22),
                 _options.ShowDangerZoneWarning, "  Hiển thị cảnh báo vùng nguy hiểm đỏ (Danger Tiles Warning)");
+            y += 28;
+
+            _options.ShowDevStageBar = GUI.Toggle(new Rect(modal.x + 18, y, 400, 22),
+                _options.ShowDevStageBar, "  Hiện thanh nhảy nhanh Ải 1–5 trên Top Bar (Dev)");
             y += 36;
 
             ApplyAudioOptions();
 
-            if (GUI.Button(new Rect(modal.x + 18, y, modal.width - 36, 30), "Lưu Cài Đặt & Áp Dụng", _activeBtnStyle))
+            if (GUI.Button(new Rect(modal.x + 18, y, modal.width - 36, 34), "Lưu Cài Đặt & Áp Dụng", _centerActiveBtnStyle))
             {
                 _options.SaveToPrefs();
+                _options.ApplyDisplaySettings();
                 _showSettingsModal = false;
+                PlaySfx("ui_confirm");
             }
+        }
+
+        private static void QuitGame()
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
         }
 
         private void OnDestroy()
         {
+            Time.timeScale = 1f;
             UnsubscribeAll();
         }
     }

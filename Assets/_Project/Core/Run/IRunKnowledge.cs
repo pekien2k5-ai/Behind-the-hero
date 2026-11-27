@@ -18,7 +18,11 @@ namespace BTH.Core.Run
 
         bool HasSeenBossSkill(string skillId);
 
+        IReadOnlyList<string> GetSeenBossSkillIds();
+
         bool HasWonClash(string bossSkillId, string playerSkillId);
+
+        IReadOnlyList<string> GetWonClashPlayerSkills(string bossSkillId);
 
         void RecordClashWin(string bossSkillId, string playerSkillId);
 

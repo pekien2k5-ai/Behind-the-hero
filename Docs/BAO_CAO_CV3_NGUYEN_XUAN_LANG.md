@@ -43,7 +43,7 @@ Mỗi hiệu ứng VFX được cắt thành dải **512×128 px (4 frame × 128
 1. **`vfx_time_rewind.png`**: Đồng hồ cổ ngữ tím phát sáng, kim quay ngược rồi vỡ tung thành mảnh thời gian (dùng cho `Rewind`, `Temporal Step`, `Dodge`).
 2. **`vfx_swift_slash.png`**: Vệt chém bán nguyệt tím-bạc tốc độ cao (dùng cho `Swift Slash` và đòn đánh thường).
 3. **`vfx_necrotic_burst.png`**: Đám mây hoại tử đen-tím xoáy tụ rồi nổ thành vòng cổng không gian (`Necrotic Burst`, `Necrotic Ward`).
-4. **`vfx_divine_barrier.png`**: Khiên thánh giá vàng kim bung tia sáng bảo hộ (`Blade Guard`, `Protect`, `Divine Barrier`).
+4. **`vfx_divine_barrier.png`**: Khiên thánh giá vàng kim bung tia sáng bảo hộ (`Blade Guard`, `Divine Barrier`).
 5. **`vfx_holy_pillar.png`**: Cột sáng thiên phạt giáng thẳng từ bầu trời xuống vùng chữ thập (`Holy Pillar`).
 6. **`vfx_holy_slash.png`**: Lưỡi kiếm ánh sáng hoàng kim quét vòng cung (`Holy Light Slash`, `Holy Strike`).
 7. **`vfx_earth_crack.png`**: Mặt đất nổ tung, đá văng kèm vết nứt dung nham (`Earth Crack`, `Ashen Fury`).

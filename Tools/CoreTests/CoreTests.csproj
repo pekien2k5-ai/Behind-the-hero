@@ -23,7 +23,7 @@
   <ItemGroup>
     <Compile Include="..\..\Assets\_Project\Core\**\*.cs" />
     <Compile Include="..\..\Assets\_Project\Content\**\*.cs" />
-    <Compile Include="..\..\Assets\Tests\**\*.cs" />
+    <Compile Include="..\..\Assets\Tests\**\*.cs" Exclude="..\..\Assets\Tests\PlayMode\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>

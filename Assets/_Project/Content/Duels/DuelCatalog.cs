@@ -12,6 +12,10 @@ namespace BTH.Content.Duels
             rules.Add(new ClashRule("swift-slash", "ashen-fury", 3));
             rules.Add(new ClashRule("necrotic-burst", "ashen-fury", 0));
 
+            rules.Add(new ClashRule("blade-guard", "axe-cleave", -2));
+            rules.Add(new ClashRule("swift-slash", "axe-cleave", -4));
+            rules.Add(new ClashRule("necrotic-burst", "axe-cleave", -4));
+
             return new ClashDefinition
             {
                 BossSkillId = "ashen-fury",
@@ -48,6 +52,10 @@ namespace BTH.Content.Duels
             rules.Add(new ClashRule("necrotic-ward", "plague-storm", 3));
             rules.Add(new ClashRule("necrotic-burst", "plague-storm", 3));
             rules.Add(new ClashRule("blade-guard", "plague-storm", -2));
+
+            rules.Add(new ClashRule("necrotic-ward", "poison-dance", 1));
+            rules.Add(new ClashRule("necrotic-burst", "poison-dance", -4));
+            rules.Add(new ClashRule("blade-guard", "poison-dance", -7));
 
             return new ClashDefinition
             {
@@ -87,6 +95,11 @@ namespace BTH.Content.Duels
             rules.Add(new ClashRule("swift-slash", "void-spear-beam", 3));
             rules.Add(new ClashRule("blade-guard", "void-spear-beam", 0));
 
+            rules.Add(new ClashRule("temporal-step", "spear-thrust", -2));
+            rules.Add(new ClashRule("dodge", "spear-thrust", -2));
+            rules.Add(new ClashRule("swift-slash", "spear-thrust", -3));
+            rules.Add(new ClashRule("blade-guard", "spear-thrust", -5));
+
             return new ClashDefinition
             {
                 BossSkillId = "void-spear-beam",
@@ -125,6 +138,11 @@ namespace BTH.Content.Duels
             rules.Add(new ClashRule("blade-guard", "hellfire-greatsword", 4));
             rules.Add(new ClashRule("swift-slash", "hellfire-greatsword", 1));
 
+            rules.Add(new ClashRule("blade-guard", "fireball", 0));
+            rules.Add(new ClashRule("temporal-step", "fireball", -4));
+            rules.Add(new ClashRule("dodge", "fireball", -2));
+            rules.Add(new ClashRule("swift-slash", "fireball", -3));
+
             return new ClashDefinition
             {
                 BossSkillId = "hellfire-greatsword",
@@ -161,6 +179,10 @@ namespace BTH.Content.Duels
             rules.Add(new ClashRule("blade-guard", "holy-light-slash", 4));
             rules.Add(new ClashRule("swift-slash", "holy-light-slash", 5));
             rules.Add(new ClashRule("necrotic-burst", "holy-light-slash", 0));
+
+            rules.Add(new ClashRule("swift-slash", "holy-strike", 1));
+            rules.Add(new ClashRule("blade-guard", "holy-strike", -3));
+            rules.Add(new ClashRule("necrotic-burst", "holy-strike", -2));
 
             return new ClashDefinition
             {

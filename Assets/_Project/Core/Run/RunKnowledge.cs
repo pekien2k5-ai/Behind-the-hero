@@ -8,7 +8,7 @@ namespace BTH.Core.Run
     {
         public const string DeathsKey = "deaths";
         public const string BossSkillSeenPrefix = "boss-skill:";
-        private const string ClashWinPrefix = "clash-win:";
+        public const string ClashWinPrefix = "clash-win:";
 
         private readonly HashSet<string> _seen = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<string, int> _counters = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -37,9 +37,46 @@ namespace BTH.Core.Run
             return !string.IsNullOrEmpty(skillId) && HasSeen(BossSkillSeenPrefix + skillId);
         }
 
+        public IReadOnlyList<string> GetSeenBossSkillIds()
+        {
+            var result = new List<string>();
+            foreach (var key in _seen)
+            {
+                if (key.Length > BossSkillSeenPrefix.Length &&
+                    key.StartsWith(BossSkillSeenPrefix, StringComparison.Ordinal))
+                {
+                    result.Add(key.Substring(BossSkillSeenPrefix.Length));
+                }
+            }
+
+            result.Sort(StringComparer.Ordinal);
+            return result;
+        }
+
         public bool HasWonClash(string bossSkillId, string playerSkillId)
         {
             return HasSeen(ClashWinKey(bossSkillId, playerSkillId));
+        }
+
+        public IReadOnlyList<string> GetWonClashPlayerSkills(string bossSkillId)
+        {
+            var result = new List<string>();
+            if (string.IsNullOrEmpty(bossSkillId))
+            {
+                return result;
+            }
+
+            string prefix = ClashWinPrefix + bossSkillId + "|";
+            foreach (var key in _seen)
+            {
+                if (key.Length > prefix.Length && key.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    result.Add(key.Substring(prefix.Length));
+                }
+            }
+
+            result.Sort(StringComparer.Ordinal);
+            return result;
         }
 
         public void RecordClashWin(string bossSkillId, string playerSkillId)

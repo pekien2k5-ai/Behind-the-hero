@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using BTH.Content.Terrain;
 using BTH.Core.Ai;
 using BTH.Core.Combat;
 using BTH.Core.Grid;
@@ -78,16 +79,25 @@ namespace BTH.Content.Brains
 
             if (!_spawnTerrain.Equals(TerrainId.None) && !string.IsNullOrEmpty(_spawnTerrain.Value))
             {
+                var spec = TerrainCatalog.Get(_spawnTerrain);
+                int moveCost = spec.MovementCost;
                 for (int i = 0; i < _cells.Count; i++)
                 {
                     var c = _cells[i];
-                    if (ctx.State.Grid.InBounds(c))
+                    if (!ctx.State.Grid.InBounds(c)) continue;
+                    var existing = ctx.State.Grid.Get(c);
+                    if (existing.Terrain == TerrainId.Wall ||
+                        existing.Terrain == TerrainId.Pit ||
+                        existing.Terrain == TerrainId.Chest ||
+                        existing.BlocksLineOfSight)
                     {
-                        ctx.State.Grid.SetTerrain(c, _spawnTerrain, _terrainFlags, 1, _hazardDmg);
-                        if (_collapseTurns > 0)
-                        {
-                            ctx.State.Grid.ArmCollapse(c, _collapseTurns);
-                        }
+                        continue;
+                    }
+
+                    ctx.State.Grid.SetTerrain(c, _spawnTerrain, _terrainFlags, moveCost, _hazardDmg);
+                    if (_collapseTurns > 0)
+                    {
+                        ctx.State.Grid.ArmCollapse(c, _collapseTurns);
                     }
                 }
             }
@@ -137,6 +147,7 @@ namespace BTH.Content.Brains
         private readonly bool _useCrossOnEvenTurn;
         private readonly bool _useRowOnOddTurn;
         private readonly bool _useRowOnEvenTurn;
+        private readonly bool _requiresLineOfSight;
         private readonly TerrainId _evenTerrain;
         private readonly TerrainFlags _evenFlags;
         private readonly int _evenHazard;
@@ -157,7 +168,8 @@ namespace BTH.Content.Brains
             int evenHazard = 0,
             int evenCollapse = 0,
             System.Func<IStatusEffect> hitStatus = null,
-            bool useRowOnEvenTurn = false)
+            bool useRowOnEvenTurn = false,
+            bool requiresLineOfSight = false)
         {
             Id = id;
             _primarySkillId = primarySkillId;
@@ -168,6 +180,7 @@ namespace BTH.Content.Brains
             _useCrossOnEvenTurn = useCrossOnEvenTurn;
             _useRowOnOddTurn = useRowOnOddTurn;
             _useRowOnEvenTurn = useRowOnEvenTurn;
+            _requiresLineOfSight = requiresLineOfSight;
             _evenTerrain = evenTerrain;
             _evenFlags = evenFlags;
             _evenHazard = evenHazard;
@@ -185,16 +198,31 @@ namespace BTH.Content.Brains
 
             bool evenTurn = (state.Turn.TurnIndex % 2) == 0;
             var targetCell = player.Position;
+            GridCoord plannedStep = ChooseStepTowards(self, targetCell, state);
+            GridCoord attackOrigin = plannedStep.IsValid
+                ? new GridCoord(plannedStep.X + (self.SizeX - 1) / 2, plannedStep.Y + (self.SizeY - 1) / 2)
+                : self.Center;
+
             var danger = new List<GridCoord>();
 
             if (evenTurn && _useCrossOnEvenTurn)
             {
-                var raw = GridShapes.Cross(targetCell, 1);
-                for (int i = 0; i < raw.Count; i++)
+                GridCoord crossCenter = targetCell;
+                bool losBlocked = _requiresLineOfSight && !state.Grid.HasLineOfSight(self.Center, targetCell);
+                if (losBlocked)
                 {
-                    if (state.Grid.InBounds(raw[i]) && !state.Grid.Get(raw[i]).BlocksLineOfSight)
+                    crossCenter = LastClearCellBeforeWall(self.Center, targetCell, state);
+                }
+
+                if (crossCenter.IsValid)
+                {
+                    var raw = GridShapes.Cross(crossCenter, 1);
+                    for (int i = 0; i < raw.Count; i++)
                     {
-                        danger.Add(raw[i]);
+                        var c = raw[i];
+                        if (!state.Grid.InBounds(c) || state.Grid.Get(c).BlocksLineOfSight) continue;
+                        if (_requiresLineOfSight && !state.Grid.HasLineOfSight(self.Center, c)) continue;
+                        danger.Add(c);
                     }
                 }
             }
@@ -219,23 +247,66 @@ namespace BTH.Content.Brains
             }
             else
             {
-                danger.Add(targetCell);
-                var adj = GridShapes.Neighbours4(targetCell);
-                for (int i = 0; i < adj.Count; i++)
+                int range = 1;
+                if (state.Skills != null && state.Skills.TryGet(_secondarySkillId, out var secSkill) && secSkill.RangeMax > 0)
                 {
-                    if (state.Grid.InBounds(adj[i]) && GridCoord.Manhattan(adj[i], self.Center) <= 2)
+                    range = secSkill.RangeMax;
+                }
+
+                int footprintDist = MinFootprintDistance(plannedStep, self.SizeX, self.SizeY, targetCell);
+                if (_requiresLineOfSight && !state.Grid.HasLineOfSight(attackOrigin, targetCell))
+                {
+                    var coverStop = LastClearCellBeforeWall(attackOrigin, targetCell, state);
+                    if (coverStop.IsValid)
                     {
-                        danger.Add(adj[i]);
-                        break;
+                        danger.Add(coverStop);
+                    }
+                }
+                else if (footprintDist <= range)
+                {
+                    danger.Add(targetCell);
+                    var adj = GridShapes.Neighbours4(targetCell);
+                    for (int i = 0; i < adj.Count; i++)
+                    {
+                        if (state.Grid.InBounds(adj[i]) &&
+                            !state.Grid.Get(adj[i]).BlocksLineOfSight &&
+                            GridCoord.Manhattan(adj[i], attackOrigin) <= range + 1)
+                        {
+                            danger.Add(adj[i]);
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    var line = GridShapes.Line(attackOrigin, targetCell);
+                    for (int i = 1; i < line.Count && danger.Count < 2; i++)
+                    {
+                        var c = line[i];
+                        if (!state.Grid.TryGet(c, out var tile) || tile.BlocksLineOfSight) break;
+                        if (GridCoord.Manhattan(attackOrigin, c) > range) break;
+                        danger.Add(c);
+                    }
+
+                    if (danger.Count == 0)
+                    {
+                        var adj = GridShapes.Neighbours4(attackOrigin);
+                        for (int i = 0; i < adj.Count; i++)
+                        {
+                            if (state.Grid.TryGet(adj[i], out var tile) && !tile.BlocksLineOfSight)
+                            {
+                                danger.Add(adj[i]);
+                                break;
+                            }
+                        }
                     }
                 }
             }
 
             var effects = new List<IGameEffect>();
-            GridCoord step = ChooseStepTowards(self, player.Position, state);
-            if (step.IsValid && step != self.Position)
+            if (plannedStep.IsValid && plannedStep != self.Position)
             {
-                effects.Add(new StepTowardsEffect(step));
+                effects.Add(new StepTowardsEffect(plannedStep));
             }
 
             string skillId = evenTurn ? _primarySkillId : _secondarySkillId;
@@ -254,24 +325,55 @@ namespace BTH.Content.Brains
             return new EnemyIntent(self.Id, skillId, targetCell, danger, effects, self.Definition.Initiative);
         }
 
+        private static GridCoord LastClearCellBeforeWall(GridCoord from, GridCoord to, GameState state)
+        {
+            var line = GridShapes.Line(from, to);
+            GridCoord lastClear = GridCoord.None;
+            for (int i = 1; i < line.Count; i++)
+            {
+                var c = line[i];
+                if (!state.Grid.TryGet(c, out var cell) || cell.BlocksLineOfSight)
+                {
+                    break;
+                }
+                lastClear = c;
+            }
+            return lastClear;
+        }
+
+        private static int MinFootprintDistance(GridCoord anchor, int sizeX, int sizeY, GridCoord goal)
+        {
+            int best = int.MaxValue;
+            for (int dx = 0; dx < sizeX; dx++)
+            {
+                for (int dy = 0; dy < sizeY; dy++)
+                {
+                    int d = GridCoord.Manhattan(new GridCoord(anchor.X + dx, anchor.Y + dy), goal);
+                    if (d < best) best = d;
+                }
+            }
+            return best;
+        }
+
         private static GridCoord ChooseStepTowards(UnitState self, GridCoord goal, GameState state)
         {
-            if (GridCoord.Manhattan(self.Center, goal) <= 1)
+            if (MinFootprintDistance(self.Position, self.SizeX, self.SizeY, goal) <= 1)
             {
                 return self.Position;
             }
 
             GridCoord best = self.Position;
-            int bestDist = GridCoord.Manhattan(self.Position, goal);
+            int bestDist = MinFootprintDistance(self.Position, self.SizeX, self.SizeY, goal);
             for (int i = 0; i < GridShapes.Directions4.Length; i++)
             {
                 var cand = self.Position + GridShapes.Directions4[i];
                 if (!state.Grid.InBounds(cand)) continue;
                 var cell = state.Grid.Get(cand);
                 if (cell.IsHazard && !self.Move.IgnoresHazard) continue;
+                if (cell.TurnsUntilCollapse == 1 && !self.Move.CanFly) continue;
                 if (!state.Units.CanPlace(self.Definition, cand, self.Id)) continue;
 
-                int d = GridCoord.Manhattan(cand, goal);
+                int d = MinFootprintDistance(cand, self.SizeX, self.SizeY, goal);
                 if (d < bestDist)
                 {
                     bestDist = d;
@@ -306,12 +408,12 @@ namespace BTH.Content.Brains
                 useCrossOnEvenTurn: true, useRowOnOddTurn: false,
                 evenTerrain: TerrainId.Cracked, evenFlags: TerrainFlags.None, evenHazard: 0, evenCollapse: 2));
 
-            // Boss 2: Vu Nữ Morbida — Chẵn: Grave Hands (chữ thập + đầm độc 3 HP + khóa chân Root), Lẻ: Độc Vũ
+            // Boss 2: Vu Nữ Morbida — Chẵn: Grave Hands (chữ thập + đầm độc 3 HP + khóa chân Root, chặn bởi tường LOS), Lẻ: Độc Vũ
             lib.Register(new TacticalBossBrain(
                 "brain-boss-morbida", "grave-hands", "poison-dance", 4, 4, ElementId.Necrotic,
                 useCrossOnEvenTurn: true, useRowOnOddTurn: false,
                 evenTerrain: TerrainId.Poison, evenFlags: TerrainFlags.IsHazard, evenHazard: 3, evenCollapse: 0,
-                hitStatus: () => new RootStatus()));
+                hitStatus: () => new RootStatus(), requiresLineOfSight: true));
 
             // Boss 3: Kỵ Sĩ Hư Không — Chẵn: Tia Thương Hư Không xuyên hàng 4 ô, Lẻ: Thương Đâm
             lib.Register(new TacticalBossBrain(
